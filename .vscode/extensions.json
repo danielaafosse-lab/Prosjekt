@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "ritwickdey.LiveServer",
+    "Tobermory.es6-string-html",
+    "christian-kohler.path-intellisense",
+    "dbaeumer.vscode-eslint",
+    "streetsidesoftware.code-spell-checker-norwegian-bokmal",
+    "eamodio.gitlens",
+    "aaron-bond.better-comments"
+  ]
+}

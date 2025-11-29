@@ -1,0 +1,74 @@
+{
+  "users": [
+    {
+      "id": "t1",
+      "username": "laerer",
+      "password": "passord",
+      "name": "Lærer Bank",
+      "accountNumber": "100",
+      "type": "teacher",
+      "balance": 0
+    },
+    {
+      "id": "s1",
+      "username": "kari123",
+      "password": "passord123",
+      "name": "Kari Nordmann",
+      "accountNumber": "101",
+      "type": "student",
+      "balance": 1000
+    },
+    {
+      "id": "s2",
+      "username": "ola456",
+      "password": "passord456",
+      "name": "Ola Hansen",
+      "accountNumber": "102",
+      "type": "student",
+      "balance": 1000
+    },
+    {
+      "id": "s3",
+      "username": "emma789",
+      "password": "passord789",
+      "name": "Emma Larsen",
+      "accountNumber": "103",
+      "type": "student",
+      "balance": 1000
+    }
+  ],
+  "jobs": [],
+  "transactions": [
+    {
+      "id": "tx_demo1",
+      "senderId": "t1",
+      "recipientId": "s1",
+      "amount": 1000,
+      "message": "Startkapital",
+      "timestamp": "2025-10-01T08:00:00.000Z"
+    },
+    {
+      "id": "tx_demo2",
+      "senderId": "t1",
+      "recipientId": "s2",
+      "amount": 1000,
+      "message": "Startkapital",
+      "timestamp": "2025-10-01T08:00:00.000Z"
+    },
+    {
+      "id": "tx_demo3",
+      "senderId": "t1",
+      "recipientId": "s3",
+      "amount": 1000,
+      "message": "Startkapital",
+      "timestamp": "2025-10-01T08:00:00.000Z"
+    }
+  ],
+  "applications": [],
+  "settings": {
+    "className": "7A",
+    "currencyName": "Skolekroner",
+    "currencySymbol": "SKR",
+    "startingBalance": 1000
+  }
+}

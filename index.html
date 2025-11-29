@@ -1,0 +1,611 @@
+﻿<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EconSim - Økonomisimulator for Klasserommet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div id="app" class="max-w-4xl mx-auto p-4 md:p-6">
+        
+        <!-- Login Screen -->
+        <div id="loginScreen" class="max-w-md mx-auto mt-20">
+            <div class="bg-white rounded-lg shadow-lg p-8">
+                <h1 class="text-3xl font-bold text-center text-blue-600 mb-2">EconSim</h1>
+                <p class="text-center text-gray-600 mb-8">Økonomisimulator for klasserommet</p>
+                
+                <form id="loginForm" class="space-y-4">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-2">Brukernavn</label>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            name="username" 
+                            required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Skriv inn brukernavn">
+                    </div>
+                    
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Passord</label>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            required
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Skriv inn passord">
+                    </div>
+                    
+                    <button 
+                        type="submit" 
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-200">
+                        Logg inn
+                    </button>
+                </form>
+                
+                <div class="mt-6 p-4 bg-gray-50 rounded-lg text-sm">
+                    <p class="font-semibold text-gray-700 mb-2">Demo-kontoer:</p>
+                    <p class="text-gray-600">Lærer: <code class="bg-gray-200 px-2 py-1 rounded">laerer</code> / <code class="bg-gray-200 px-2 py-1 rounded">passord</code></p>
+                    <p class="text-gray-600">Elev: <code class="bg-gray-200 px-2 py-1 rounded">kari123</code> / <code class="bg-gray-200 px-2 py-1 rounded">passord123</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Dashboard -->
+        <div id="studentDashboard" class="hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">Hei, <span id="studentName"></span>!</h1>
+                        <p class="text-gray-600">Kontonummer: <span id="studentAccountNumber"></span></p>
+                    </div>
+                    <button data-action="logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">
+                        Logg ut
+                    </button>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm text-gray-600">Din saldo</p>
+                    <p class="text-4xl font-bold text-green-600" id="studentBalance">0 kr</p>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex gap-2 mb-6">
+                <button onclick="window.econSim.showStudentScreen('overview')" 
+                    class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg" id="studentOverviewBtn">
+                    📊 Oversikt
+                </button>
+                <button onclick="window.econSim.showStudentScreen('jobs')" 
+                    class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg" id="studentJobsBtn">
+                    💼 Jobber
+                </button>
+            </div>
+
+            <!-- Overview Screen -->
+            <div id="studentOverviewScreen">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="font-semibold text-lg mb-3">💸 Send penger</h3>
+                        <form id="transferForm" class="space-y-3">
+                            <input 
+                                type="text" 
+                                id="recipientAccount" 
+                                placeholder="Mottakers kontonummer"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                required>
+                            <input 
+                                type="number" 
+                                id="transferAmount" 
+                                placeholder="Beløp"
+                                min="1"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                required>
+                            <textarea 
+                                id="transferMessage" 
+                                placeholder="Melding (valgfritt)"
+                                rows="2"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"></textarea>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg">
+                                Send penger
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="font-semibold text-lg mb-3">💼 Mine aktive jobber</h3>
+                        <div id="studentActiveJobsSummary" class="space-y-2">
+                            <p class="text-gray-500 text-sm">Ingen aktive jobber</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transaction History -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-semibold text-lg mb-4">📊 Transaksjonshistorikk</h3>
+                    <div id="studentTransactions" class="space-y-2">
+                        <p class="text-gray-500 text-sm">Ingen transaksjoner ennå</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jobs Screen -->
+            <div id="studentJobsScreen" class="hidden">
+                <!-- Available Jobs -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 class="font-semibold text-lg mb-4">🔍 Tilgjengelige jobber</h3>
+                    <div id="studentAvailableJobs" class="space-y-3">
+                        <p class="text-gray-500 text-sm">Ingen ledige jobber akkurat nå</p>
+                    </div>
+                </div>
+
+                <!-- Active Jobs -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 class="font-semibold text-lg mb-4">💼 Mine aktive jobber</h3>
+                    <div id="studentActiveJobs" class="space-y-3">
+                        <p class="text-gray-500 text-sm">Ingen aktive jobber</p>
+                    </div>
+                </div>
+
+                <!-- Previous Jobs -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-semibold text-lg mb-4">📋 Tidligere jobber</h3>
+                    <div id="studentPreviousJobs" class="space-y-3">
+                        <p class="text-gray-500 text-sm">Ingen tidligere jobber</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Teacher Dashboard -->
+        <div id="teacherDashboard" class="hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">Lærer Dashboard</h1>
+                        <p class="text-gray-600">Velkommen, <span id="teacherName"></span></p>
+                    </div>
+                    <button data-action="logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">
+                        Logg ut
+                    </button>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex gap-2 mb-6">
+                <button onclick="window.econSim.showTeacherScreen('overview')" 
+                    class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg" id="teacherOverviewBtn">
+                    📊 Oversikt
+                </button>
+                <button onclick="window.econSim.showTeacherScreen('jobs')" 
+                    class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg" id="teacherJobsBtn">
+                    💼 Jobber
+                </button>
+            </div>
+
+            <!-- Overview Screen -->
+            <div id="teacherOverviewScreen">
+                <!-- Teacher Actions -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="font-semibold text-lg mb-3">💰 Gi penger</h3>
+                        <form id="giveMoneyForm" class="space-y-3">
+                            <select id="giveMoneyRecipient" class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
+                                <option value="">Velg elev...</option>
+                            </select>
+                            <input 
+                                type="number" 
+                                id="giveMoneyAmount" 
+                                placeholder="Beløp"
+                                min="1"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                required>
+                            <textarea 
+                                id="giveMoneyMessage" 
+                                placeholder="Melding (valgfritt)"
+                                rows="2"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"></textarea>
+                            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">
+                                Gi penger
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="font-semibold text-lg mb-3">⚡ Hurtighandlinger</h3>
+                        <button id="payAllSalariesBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg mb-2">
+                            💰 Gi lønn til alle
+                        </button>
+                        <button onclick="window.econSim.showTeacherScreen('jobs')" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg mb-2">
+                            💼 Administrer jobber
+                        </button>
+                        <button id="settingsBtn" class="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg mb-2">
+                            ⚙️ Innstillinger
+                        </button>
+                        <button id="exportDataBtn" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg mb-2">
+                            💾 Eksporter data (JSON)
+                        </button>
+                        <label for="importDataFile" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg mb-2 cursor-pointer block text-center">
+                            📂 Last opp data (JSON)
+                        </label>
+                        <input type="file" id="importDataFile" accept=".json" class="hidden">
+                        <button id="resetDataBtn" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg">
+                            🔄 Reset til initial data
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Students Overview -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 class="font-semibold text-lg mb-4">👥 Eleveoversikt</h3>
+                    <div id="studentsTable" class="overflow-x-auto">
+                        <p class="text-gray-500 text-sm">Laster elever...</p>
+                    </div>
+                </div>
+
+                <!-- Teacher Transaction History -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-semibold text-lg mb-4">📊 Transaksjonshistorikk</h3>
+                    <div id="teacherTransactions" class="space-y-2">
+                        <p class="text-gray-500 text-sm">Ingen transaksjoner ennå</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jobs Screen -->
+            <div id="teacherJobsScreen" class="hidden">
+                <div class="mb-4">
+                    <button id="createJobBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold">
+                        ➕ Opprett ny jobb
+                    </button>
+                </div>
+
+                <!-- Available Jobs -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 class="font-semibold text-lg mb-4">🔍 Tilgjengelige jobber (ledige)</h3>
+                    <div id="teacherAvailableJobs" class="space-y-3">
+                        <p class="text-gray-500 text-sm">Ingen ledige jobber</p>
+                    </div>
+                </div>
+
+                <!-- Active Jobs -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h3 class="font-semibold text-lg mb-4">� Aktive jobber (ansatte)</h3>
+                    <div id="teacherActiveJobs" class="space-y-3">
+                        <p class="text-gray-500 text-sm">Ingen aktive jobber</p>
+                    </div>
+                </div>
+
+                <!-- Completed Jobs -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-semibold text-lg mb-4">✅ Avsluttede jobber</h3>
+                    <div id="teacherCompletedJobs" class="space-y-3">
+                        <p class="text-gray-500 text-sm">Ingen avsluttede jobber</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Modal Container -->
+    <div id="modalContainer" class="fixed inset-0 z-50 hidden"></div>
+
+    <!-- Create Job Modal -->
+    <div id="createJobModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h2 class="text-2xl font-bold mb-4">Opprett ny jobb</h2>
+            <form id="createJobForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tittel</label>
+                    <input 
+                        type="text" 
+                        id="jobTitle" 
+                        required
+                        placeholder="F.eks. Tavlevask"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Beskrivelse</label>
+                    <textarea 
+                        id="jobDescription" 
+                        rows="3"
+                        placeholder="Hva skal gjøres?"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Månedslønn (SKR)</label>
+                    <input 
+                        type="number" 
+                        id="jobSalary" 
+                        required
+                        min="1"
+                        placeholder="150"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Jobbtype</label>
+                    <select id="jobType" class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
+                        <option value="fixed">Fast jobb (kan betales flere ganger)</option>
+                        <option value="project">Prosjekt (avsluttes ved utbetaling)</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">
+                        <strong>Fast:</strong> Kontinuerlig jobb med månedlig lønn<br>
+                        <strong>Prosjekt:</strong> Engangsoppdrag som avsluttes automatisk
+                    </p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Ansett elev (valgfritt)</label>
+                    <select id="jobAssignStudent" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        <option value="">Ingen (ledig jobb)</option>
+                    </select>
+                </div>
+                
+                <div class="flex gap-3 pt-4">
+                    <button 
+                        type="button" 
+                        onclick="document.getElementById('createJobModal').classList.add('hidden')"
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg">
+                        Avbryt
+                    </button>
+                    <button 
+                        type="submit" 
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg">
+                        Opprett jobb
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Job Application Modal -->
+    <div id="applicationModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4">📝 Søk på jobb</h3>
+            <form id="applicationForm" class="space-y-4">
+                <input type="hidden" id="applyJobId">
+                <div id="applyJobInfo" class="bg-gray-50 p-3 rounded mb-4"></div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Hvorfor skal du få jobben?</label>
+                    <textarea 
+                        id="applicationText" 
+                        rows="4"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        placeholder="Skriv hvorfor du er rett person for denne jobben..."
+                        required></textarea>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button 
+                        type="button" 
+                        onclick="document.getElementById('applicationModal').classList.add('hidden')"
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg">
+                        Avbryt
+                    </button>
+                    <button 
+                        type="submit" 
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg">
+                        Send søknad
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Job Modal -->
+    <div id="editJobModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4">✏️ Rediger jobb</h3>
+            <form id="editJobForm" class="space-y-4">
+                <input type="hidden" id="editJobId">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tittel</label>
+                    <input 
+                        type="text" 
+                        id="editJobTitle" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        required>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Beskrivelse</label>
+                    <textarea 
+                        id="editJobDescription" 
+                        rows="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Månedslønn (SKR)</label>
+                    <input 
+                        type="number" 
+                        id="editJobSalary" 
+                        min="1"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        required>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button 
+                        type="button" 
+                        onclick="document.getElementById('editJobModal').classList.add('hidden')"
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg">
+                        Avbryt
+                    </button>
+                    <button 
+                        type="submit" 
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg">
+                        Lagre endringer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- View Applications Modal -->
+    <div id="viewApplicationsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4">📋 Søknader</h3>
+            <div id="applicationsContainer"></div>
+            <button 
+                onclick="document.getElementById('viewApplicationsModal').classList.add('hidden')"
+                class="w-full mt-4 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg">
+                Lukk
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings Modal (Teache) -->
+    <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4">⚙️ Innstillinger</h3>
+            
+            <form id="settingsForm" class="space-y-6">
+                <!-- Klasse info -->
+                <div class="border-b pb-4">
+                    <h4 class="font-semibold mb-3">📚 Klasseinformasjon</h4>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Klassenavn</label>
+                        <input 
+                            type="text" 
+                            id="settingsClassName"
+                            placeholder="7A"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            required>
+                    </div>
+                </div>
+
+                <!-- Valuta -->
+                <div class="border-b pb-4">
+                    <h4 class="font-semibold mb-3">💰 Valuta</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Valutanavn</label>
+                            <input 
+                                type="text" 
+                                id="settingsCurrencyName"
+                                placeholder="KlasseKrone"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Forkortelse</label>
+                            <input 
+                                type="text" 
+                                id="settingsCurrencySymbol"
+                                placeholder="KKr"
+                                maxlength="5"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                required>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Startkapital -->
+                <div class="border-b pb-4">
+                    <h4 class="font-semibold mb-3">💵 Startkapital</h4>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Beløp for nye elever</label>
+                        <input 
+                            type="number" 
+                            id="settingsStartingBalance"
+                            min="0"
+                            step="100"
+                            placeholder="1000"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            required>
+                        <p class="text-xs text-gray-500 mt-1">Dette beløpet får alle nye elever som startsaldo</p>
+                    </div>
+                </div>
+
+                <!-- Bedriftsfunksjon -->
+                <div class="border-b pb-4">
+                    <h4 class="font-semibold mb-3">🏢 Bedriftsfunksjoner</h4>
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            id="settingsEnableBusinesses"
+                            class="w-5 h-5 text-blue-600 rounded">
+                        <div>
+                            <span class="font-medium">Tillat elever å starte bedrifter</span>
+                            <p class="text-xs text-gray-500">Aktiverer muligheten for elever å opprette og drive bedrifter (kommer snart)</p>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Elevadministrasjon -->
+                <div>
+                    <h4 class="font-semibold mb-3">👥 Elevadministrasjon</h4>
+                    <div class="space-y-3">
+                        <!-- Liste over elever -->
+                        <div class="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
+                            <div id="studentListContainer" class="space-y-2">
+                                <!-- Dynamisk innhold -->
+                            </div>
+                        </div>
+                        
+                        <!-- Legg til ny elev -->
+                        <div class="border-t pt-3">
+                            <p class="text-sm font-medium mb-2">Legg til ny elev</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input 
+                                    type="text" 
+                                    id="newStudentName"
+                                    placeholder="Navn"
+                                    class="px-3 py-2 border border-gray-300 rounded-lg">
+                                <input 
+                                    type="text" 
+                                    id="newStudentUsername"
+                                    placeholder="Brukernavn"
+                                    class="px-3 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                            <input 
+                                type="password" 
+                                id="newStudentPassword"
+                                placeholder="Passord"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg mt-2">
+                            <button 
+                                type="button"
+                                id="addStudentBtn"
+                                class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">
+                                ➕ Legg til elev
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Knapper -->
+                <div class="flex space-x-3 pt-4">
+                    <button 
+                        type="submit"
+                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg">
+                        💾 Lagre innstillinger
+                    </button>
+                    <button 
+                        type="button"
+                        onclick="document.getElementById('settingsModal').classList.add('hidden')"
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 rounded-lg">
+                        Avbryt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
