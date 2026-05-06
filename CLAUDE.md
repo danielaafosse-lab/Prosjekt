@@ -20,7 +20,7 @@ Vi migrerer fra organisk vokst monolitt (`main.js` 12k linjer, `index.html` 3k l
 | 0 — Branch og sikkerhetsnett | I gang |
 | 1 — Død kod, CSS-konsolidering, dokumentsplitting | Pågår |
 | 2 — Verktøy (ESLint, Prettier, Vitest, JSDoc) | Ikke startet |
-| 3 — Data-lag forenkling | Ikke startet |
+| 3 — Data-lag forenkling | Ferdig (passthrough fjernet, firebaseService flyttet til `js/shared/core/`) |
 | 4 — Splitt `index.html` til templates | Ikke startet |
 | 5 — Splitt `main.js` til features | Ikke startet |
 | 6 — Ytelse (batch writes, scheduler-parallell, shards) | Ikke startet |
@@ -102,10 +102,12 @@ Etter endring av Tailwind-klasser i HTML eller JS, kjør `npm run build:css`.
     │
     ├── core/
     │   ├── auth.js
-    │   ├── dataService.js                # Tynt passthrough — fjernes i fase 3
-    │   ├── dataService.firebase.js       # Slås sammen med firebaseService i fase 3
-    │   ├── firebaseService.js            # Splittes til shared/core/firebase/* i fase 3
+    │   ├── dataService.js                # Domain data layer (cached, ~1800 linjer — splittes i fase 5)
     │   └── eventBus.js
+    │
+    ├── shared/                    # v6-mål: gjenbrukbar plattform (fyles ut gjennom fase 5)
+    │   └── core/
+    │       └── firebaseService.js  # Generisk Firestore CRUD-wrapper
     │
     ├── services/                 # Forretningslogikk per domene
     │   ├── businessService.js
