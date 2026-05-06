@@ -1,102 +1,496 @@
-# 🚀 EconSim - Prosjektmanifest# EconSim - Prosjektmanifest# 🚀 EconSim - Økonomisimulator for Klasserommet
+# 🚀 EconSim - Prosjektmanifest
 
-
-
-**Versjon:** 2.1 - localStorage Edition  
-
-**Dato:** Oktober 2025  
-
-**Institusjon:** HVL (Høgskulen på Vestlandet)  **Versjon:** 2.1  **Versjon:** 2.1 - Live Preview Edition  
-
+**Versjon:** 5.2 - Bugfixes og Forbedringer
+**Dato:** 13. desember 2025
+**Institusjon:** HVL (Høgskulen på Vestlandet)
 **Målgruppe:** Norsk ungdomsskole (13-16 år)
+**Type:** Økonomisimulator for klasserommet
+**Teknologi:** HTML5 + ES6 Modules + Tailwind CSS + Firebase Firestore + EmailJS
 
-**Type:** Økonomisimulator for klasserommet  **Dato:** Oktober 2025
+---
+
+## 🔧 ENDRINGER 16. mars 2026
+
+### Nullstilling av klasserom (lærer)
+- **Transaksjonshistorikk slettes nå fullt ut:** Ved lærer-nullstilling slettes nå all klasseromsdata først, inkludert transaksjoner, slik at historikk for både lærer og elev blir nullstilt.
+- **Legacy-transaksjoner ryddes også:** Transaksjoner uten `classroomId` (eldre data) slettes nå dersom de involverer brukere i klasserommet.
+- **Login-statistikk nullstilles:** `statsService.resetClassroomStats(classroomId)` kjøres nå også ved lærer-nullstilling.
+- **Ekstra robust transaksjonsrydding:** Legacy-rydding inkluderer nå også lærer-ID hentet både fra klasserom-dokument og brukere med samme `classroomId`.
+
+### Manuell refresh for flere roller
+- **Ny refresh-knapp for lærer:** Lærer-dashboard har nå `🔄 Oppdater` som tvinger datainnhenting og visningsoppdatering.
+- **Ny refresh-knapp for elev:** Elev-dashboard har nå `🔄 Oppdater` som tvinger ny lasting av saldo, historikk og relevant dashboard-data.
+- **Aktiv fane beholdes:** Ved manuell refresh forsøker appen å beholde gjeldende visning for lærer/elev.
+
+### Demo-reset robusthet
+- **Sletter data før elevsletting:** Demo-reset sletter nå klasseromsdata før elever slettes for å sikre at også gammel transaksjonshistorikk knyttet til elev-ID-er fjernes korrekt.
+- **Verifisert demo-kobling:** Ny integritetssjekk sørger for at demo-lærer (`t1`/`laerer`), demo-klasserom (`demo-classroom`) og demo-elever fra `initial-data.json` er korrekt koblet sammen.
+- **Kjøres både ved oppstart og etter demo-reset:** Integritetssjekken kjøres automatisk ved init og umiddelbart etter reset av demo-klasserom.
+
+### Isolering av lærerhistorikk
+- **Sikrere filter i lærerhistorikk:** Hvis klasserom-objekt mangler, brukes fallback til `currentUser.classroomId` for å unngå visning av globale transaksjoner.
+- **Sikker fallback:** Hvis klasserom fortsatt ikke kan bestemmes, vises kun lærerens egne transaksjoner i stedet for all historikk.
+
+### Progressiv skatt - grenser og forhåndsvisning
+- **Sammenhengende skattetrinn:** Start for neste trinn settes nå alltid til forrige trinns øvre grense + 1.
+- **Robust validering i UI:** Hvis øvre grense i trinn 2 settes lavere enn trinn 1 + 1, justeres den automatisk opp.
+- **Dynamisk eksempel oppdateres live:** Eksempelet under progressive trinn oppdateres nå umiddelbart når grenser eller satser endres.
+- **Korrekt lagring av trinn:** Innstillinger lagres med `min`-verdier som følger `forrige max + 1`.
+- **Korrekt skatteberegning:** Progressiv beregning bruker inkluderende intervaller (f.eks. `501-1500`) og normaliserer trinnkontinuitet før utregning.
+- **Fikset "første gang" i settings-modal:** Live-oppdatering av starttall for neste skattetrinn bindes nå alltid ved åpning av innstillinger, også når `tax.brackets` ikke tidligere har vært lagret.
+
+### Valuta og klasserom-synk
+- **Ferske innstillinger for elev:** Elev-dashboard henter nå alltid oppdaterte klasseromsinnstillinger via `settingsService.getSettings()`, slik at valutanavn/symbol følger lærerens endringer.
+
+### Lærerens eleveoversikt
+- **Total saldo per elev:** Kolonnen for saldo i lærerens eleveoversikt viser nå samlet beløp for brukskonto + sparekonto + fondskonto (ikke bare brukskonto).
+- **"Vis detaljer" per elev:** Lærer kan nå utvide hver elevrad for å se fordeling mellom brukskonto, sparekonto og fondskonto.
+
+### Bedriftsoversikt (lærer)
+- **Ny kolonne for ukesendring:** "Alle bedrifter" viser nå prosentvis endring siste uke.
+- **Rangering på prosentvekst:** Bedrifter sorteres etter prosentvis vekst (ikke absolutte kroner).
+- **Farge-/pilindikatorer:**
+   - Grønn opp (`⬆️`) for sterk vekst
+   - Turkis skrå opp (`↗️`) for mild vekst
+   - Gul høyre (`➡️`) for flat utvikling
+   - Oransje skrå ned (`↘️`) for mild nedgang
+   - Rød ned (`⬇️`) for sterk nedgang
+
+### Sparing/fond - tidsmodell og bedre fondsdynamikk
+- **Ny innstilling: tidsmodell for rente/avkastning** i lærerens innstillinger:
+   - Akselerert skolemodus: `1 uke = 1 måned`
+   - Realistisk: `1 uke = 1 uke`
+- **Tidsmodell lagres per klasserom** (`settings.simulation.timeModel`).
+- **Oppdatert fondsformel:** Avkastning bruker nå en enkel stokastisk modell med forventet drift + volatilitet (normalfordelt sjokk), som gir mer realistisk variasjon over tid enn lineær `base ± uniform`.
+- **Sparerente følger valgt tidsmodell** ved periodisering av årlig rente.
+
+### Lån-fane for elev
+- **Skjules når deaktivert:** Elevens lån-fane skjules nå helt når lånesystemet er slått av (samme mønster som bedrifter).
+- **Direkte navigering blokkert:** Hvis lån er deaktivert og elev prøver å åpne lån-skjermen, sendes visningen tilbake til oversikt.
+- **Lånesøknad blokkert når deaktivert:** Innsending av lånesøknad stoppes med tydelig feilmelding dersom lånesystemet er av.
+
+### UI/oversettelser
+- **Refresh oversatt:** `Oppdater`/`Refreshing...` støtter nå både norsk og engelsk for elev, lærer og superadmin.
+- **Emoji fjernet i header:** Fjernet emoji foran "Klasserom:" i toppen av lærer- og elevdashboard.
 
 ---
 
-**Teknologi:** HTML5 + ES6 Modules + localStorage
 
-## 🎯 VISJON OG FORMÅL
+## 🔧 ENDRINGER 15. desember 2025
+
+### UI-forbedringer
+- **Footer:** Footer er nå kun enkel tekst nederst på siden, ikke sticky/fixed, og dominerer ikke innholdet. Vises kun når man scroller til bunn.
 
 ---
+
+## 🔧 NYE FUNKSJONER I V5.2 (13. desember 2025)
+
+### Bugfixes
+- **[object Promise] feil:** Fikset asynkron rendering av bedriftsjobber med Promise.all()
+- **Notification badges:** Badges vises nå umiddelbart ved innlogging (await på alle badge-funksjoner)
+- **Svar/reply-knapp:** Fikset visning av svar-knapp for meldinger (støtter både fromId/senderId varianter)
+- **Utboks:** Sendte meldinger vises nå korrekt (createTeacherMessage og createBusinessMessage oppretter utboks-kopi)
+- **Bedriftsjobber for elever:** Refresh av businessService cache ved lasting av jobber
+- **Aksepterte jobbtilbud:** Forsvinner nå korrekt etter aksept (await på alle UI-oppdateringer)
+
+### Oversettelser
+- **common.exampleAmount:** Lagt til oversettelse "f.eks. 50" / "e.g. 50"
+- **jobs.terms:** Lagt til oversettelse "Vilkår:" / "Terms:"
+
+### UI-forbedringer
+- **Footer:** Endret fra fixed til normal posisjon (ikke lenger overlagt på innhold)
+- **Body layout:** Lagt til flexbox for sticky footer-effekt
+
+---
+
+## 🔧 NYE FUNKSJONER I V5.1 (12. desember 2025)
+
+### Fullstendig Meldingssystem Omstrukturering
+
+**Ny kategoristruktur for alle brukertyper:**
+
+| Brukertype | Kategorier |
+|------------|------------|
+| Lærer | System, Lån, Jobb, Bedrifter, Elever, Utboks |
+| Elev | System, Lærer, Bedrifter, Elever, Utboks |
+| Bedrift | System, Lærer, Elever, Bedrifter, Utboks |
+
+### Utboks-funksjonalitet
+- **Sendte meldinger:** Alle brukertyper kan nå se sine sendte meldinger
+- **Lest-status:** Grønn hake (✓ Lest) eller grå sirkel (◯ Ulest)
+- **Tidspunkt:** Viser når mottaker leste meldingen
+- **Ny collection:** `OUTBOX` i Firebase for sendte meldinger
+
+### Ukesrapporter (Automatisk hver mandag kl 08:00)
+- **Elevrapporter:** Hver elev mottar individuell rapport med:
+  - Egen formue og endring siden forrige uke
+  - Rangering blant medelever
+  - Oppsummering av økonomisk status
+- **Bedriftsrapporter:** Hver bedrift mottar rapport med:
+  - Beholdning og endring
+  - Antall ansatte
+  - Økonomisk oversikt
+- **Snapshot-system:** Lagrer ukentlige data for sammenligning (`WEEKLY_SNAPSHOTS` collection)
+
+### Notification Badge Fix
+- **Umiddelbar visning:** Badge vises nå rett etter innlogging
+- **Optimalisert polling:** Endret fra 5 sekunder til 30 sekunder
+- **Bedre ytelse:** Redusert serverbelastning
+
+### Read-status Fix
+- **Markering ved åpning:** Meldinger markeres som lest når de åpnes
+- **readAt timestamp:** Lagrer tidspunkt for lesing
+- **Utboks-synkronisering:** Avsender ser når mottaker har lest
+
+### Forbedret Utskrift
+- **Profesjonell formatering:** Bevaer linjeskift og struktur
+- **Monospace font:** Kontrakter vises med fast bredde-skrift
+- **Dedikert print-vindu:** Pent formatert utskriftsversjon
+- **Metadata:** Viser avsender, mottaker, dato i utskriften
+
+### Oppdaterte filer
+- `js/core/dataService.firebase.js` - Ny OUTBOX/WEEKLY_SNAPSHOTS collections, utboks-funksjoner
+- `js/main.js` - Ny kategori-UI, utboks-rendering, badge-fix, print-forbedring
+- `js/services/schedulerService.js` - Ukesrapporter til elever og bedrifter
+- `js/services/languageService.js` - Nye oversettelser for kategorier og rapporter
+- `index.html` - Nye faner for alle brukertyper
+
+### Nye Firebase Collections
+- `outbox` - Sendte meldinger med lest-status tracking
+- `weeklySnapshots` - Ukentlige formue-snapshots for rapportsammenligning
+
+### Nye Oversettelsesnøkler
+- `inbox.teacher`, `inbox.businesses`, `inbox.students`, `inbox.jobs`, `inbox.outbox`
+- `inbox.read`, `inbox.unread`, `inbox.readAt`
+- `report.weeklyTitle`, `report.wealthChange`, `report.ranking`
+
+---
+
+## 🔧 NYE FUNKSJONER I V5.0 (12. desember 2025)
+
+### Kritisk Bugfix - Bedriftsopprettelse
+- **Feil:** "No document to update" når elev prøvde å starte bedrift
+- **Årsak:** `saveClassroomItem()` brukte `firebaseService.update()` som feiler for nye dokumenter
+- **Løsning:** Endret til `firebaseService.set()` som håndterer både nye og eksisterende dokumenter
+
+### Ytelsesoptimalisering - Parallell Initialisering
+**Innlogging og oppstart er nå betydelig raskere:**
+
+1. **`loadClassroomDataToCache()` - Parallell datalasting:**
+   - FØR: 5 Firebase-queries kjørte sekvensielt (A → B → C → D → E)
+   - ETTER: Alle 5 queries kjører parallelt med `Promise.all()`
+   - Forventet forbedring: ~5x raskere datalasting
+
+2. **`initializeUserServices()` - Parallell tjeneste-initialisering:**
+   - FØR: 7 tjenester initialisert sekvensielt
+   - ETTER: Alle 7 tjenester initialiseres parallelt med `Promise.allSettled()`
+   - Forbedret feilhåndtering: Én feilende tjeneste stopper ikke de andre
+
+### Oppdaterte filer
+- `js/core/dataService.firebase.js` - `saveClassroomItem()` og `loadClassroomDataToCache()`
+- `js/main.js` - `initializeUserServices()` parallelisert
+
+---
+
+## 🔧 NYE FUNKSJONER I V4.9 (12. desember 2025)
+
+### Progressiv Skatt - Komplett Fix
+**Alle standardverdier og fallbacks oppdatert på alle lokasjoner:**
+- **Trinn 1:** 0 - 500 = 0% (skattefritt)
+- **Trinn 2:** 501 - 1500 = 25%
+- **Trinn 3:** 1501+ = 35%
+
+**Oppdaterte steder:**
+- `js/config.js` - APP_CONFIG.defaults.progressiveTaxBrackets
+- `js/config.js` - DEFAULT_SETTINGS.tax.brackets
+- `index.html` - HTML input default values (taxBracket2Max, taxBracket2Rate, bracket3Start)
+- `js/main.js` - updateTaxBracketLabels() fallback verdier
+- `js/main.js` - showSettingsModal() fallback verdier
+- `js/main.js` - saveSettings() fallback verdier
+
+### Copyright Footer - Garantert Synlighet
+- **CSS `!important` regler:** Footer har nå eksplisitte CSS-regler som sikrer synlighet
+- **z-index: 99999:** Garanterer at footer alltid er på toppen
+- **min-height: 100vh:** html og body har nå minimum viewport-høyde
+- **Fixed positioning:** Footer er fastlåst til bunnen av viewporten
+
+### Oppdaterte filer
+- `index.html` - Korrekte HTML default verdier for skattetrinn
+- `js/main.js` - Korrekte fallback verdier (3 steder)
+- `css/styles.css` - Ny CSS for footer synlighet
+
+---
+
+## 🔧 NYE FUNKSJONER I V4.8 (12. desember 2025)
+
+### Passordgjenoppretting via E-post
+- **Sikker passordtilbakestilling:** Nytt passord sendes nå via e-post i stedet for å vises i nettleservinduet
+- **Loading-indikator:** Viser "Sender e-post..." mens forespørselen behandles
+- **Suksessmelding:** Viser bekreftelse med mottakers e-postadresse etter vellykket sending
+- **Feilhåndtering:** Viser varsel hvis e-post ikke kunne sendes (passord likevel oppdatert)
+
+---
+
+## 🔧 NYE FUNKSJONER I V4.7 (12. desember 2025)
+
+### Kritiske Bugfikser - Async/Await & Firebase Konsistens
+
+**Omfattende gjennomgang og fiks av alle tjenester for korrekt async/await håndtering og Firebase-integrasjon.**
+
+### NotificationService - Fullstendig Refaktorert
+- **Ny `initialize()` metode:** Må kalles etter innlogging for å laste notifikasjoner
+- **Ny `loadNotificationsAsync()`:** Asynkron lasting fra Firebase med klasserom-isolering
+- **Alle metoder nå async:** `create()`, `markAsRead()`, `markAllAsRead()`, `delete()`, `deleteAllForUser()`, `sendMessage()`, `broadcastSystem()`, `reset()`
+- **Fjernet localStorage-bruk:** `broadcastSystem()` bruker nå `dataService.getUsersSync()` og `dataService.getCurrentClassroomIdSync()`
+- **Cache-validering:** Sjekker klasserom-ID før cache brukes
+
+### SchedulerService - Klasserom-isolert State
+- **Ny `initialize()` metode:** Laster scheduler-state fra Firebase
+- **`lastProcessedWeek` i Firebase:** Migrert fra localStorage til klasserom-dokument
+- **`lastQuarterWeek` i Firebase:** Kvartalsvis skattemelding-state nå klasserom-isolert
+- **Alle async-kall awaited:** `processWeekly()`, `forceProcess()`, `checkQuarterlyTaxStatements()`
+- **`generateWeeklyReport()`:** Bruker nå `dataService.createTeacherMessage()` i stedet for localStorage
+- **Ny `refreshCache()` metode:** For cache-invalidering ved klasserombytte
+
+### LoanService - Firebase-integrert Notifikasjoner
+- **`sendPaymentShortageNotification()` refaktorert:**
+  - Bruker `notificationService.create()` for elevvarsler
+  - Bruker `dataService.createTeacherMessage()` for lærervarsler
+  - Fjernet all direkte localStorage-bruk
+- **`getCurrentClassroomId()` standardisert:** Bruker `dataService.getCurrentClassroomIdSync()`
+
+### BusinessService - Firebase-integrert Meldinger
+- **`sendSalaryFailureNotification()` refaktorert:** Bruker `dataService.createTeacherMessage()`
+- **`acceptOwnershipOffer()` skatteinnbetaling:** Bruker `dataService.addToTaxAccount()` i stedet for localStorage
+- **Bruker-lookup:** Bruker `dataService.getUsersSync()` i stedet for localStorage
+- **`getCurrentClassroomId()` standardisert:** Bruker `dataService.getCurrentClassroomIdSync()`
+
+### JobService - Standardisert
+- **`getCurrentClassroomId()` standardisert:** Bruker `dataService.getCurrentClassroomIdSync()`
+
+### UserService - Firebase-integrert
+- **Brukernavnsjekk:** Bruker `dataService.getUsersSync()` i stedet for localStorage
+
+### Main.js - Forbedret Initialisering
+- **NotificationService initialisering:** Lagt til `notificationService.initialize()`
+- **SchedulerService initialisering:** Lagt til `schedulerService.initialize()`
+- **SchedulerService cache refresh:** Lagt til ved data reset
+
+### Arkitekturelle Forbedringer
+- **Fjernet dupliserte `getCurrentClassroomId()` implementasjoner:** Alle services bruker nå `dataService.getCurrentClassroomIdSync()`
+- **Konsistent async/await:** Alle Firebase-operasjoner awaites korrekt
+- **Cache-håndtering:** Alle tjenester har `initialize()` og `refreshCache()` metoder
+- **Klasserom-isolering:** All scheduler- og notifikasjon-state er nå korrekt isolert per klasserom
+
+### Oppdaterte filer
+- `js/services/notificationService.js` - Fullstendig refaktorert
+- `js/services/schedulerService.js` - Migrert til Firebase, async/await fikser
+- `js/services/loanService.js` - Firebase-integrert notifikasjoner
+- `js/services/businessService.js` - Firebase-integrert meldinger og skatt
+- `js/services/jobService.js` - Standardisert getCurrentClassroomId
+- `js/services/userService.js` - Firebase-integrert brukersjekk
+- `js/main.js` - Forbedret service-initialisering
+
+### Tekniske Detaljer
+- **Race condition-forebygging:** Cache-validering mot klasserom-ID
+- **Error handling:** Alle async-operasjoner har try-catch
+- **Backwards compatibility:** Synkrone metoder beholdt med deprecation warnings
+
+---
+
+## 🔧 NYE FUNKSJONER I V4.6 (12. desember 2025)
+
+### Kontakt og Copyright
+- **Copyright footer:** Fast footer med "© 2025 Daniel Alexander Andersen Fosse" vises på alle sider
+- **Kontakt-knapp:** Ny "📬 Kontakt oss" knapp på innloggingssiden
+- **Kontakt-modal:** Modal med e-postknapp som åpner mailto:econsim.no@gmail.com
+- **Oversettelser:** Kontakt og footer har både norsk og engelsk versjon
+
+### Nye filer
+- Ingen nye filer
+
+### Oppdaterte filer
+- `index.html` - Kontakt-knapp, kontakt-modal, copyright footer
+- `js/services/languageService.js` - Nye oversettelser for kontakt og footer
+
+### Nye oversettelsesnøkler
+- `contact.link` - 📬 Kontakt oss / 📬 Contact us
+- `contact.title` - Kontakt oss / Contact us
+- `contact.description` - Hjelpetekst på norsk/engelsk
+- `contact.backToLogin` - Tilbake til innlogging / Back to login
+- `footer.copyright` - © 2025 Daniel Alexander Andersen Fosse
+
+---
+
+## 🔧 NYE FUNKSJONER I V4.5 (12. desember 2025)
+
+### E-postverifisering og passordgjenoppretting
+- **E-post for lærere:** Lærere kan nå legge til e-postadresse i innstillingene
+- **E-postverifisering:** Verifiseringslenke genereres og kan åpnes for å bekrefte e-post
+- **Glemt passord:** Ny funksjon på innloggingssiden for passordgjenoppretting
+- **Pedagogisk melding:** Tydelig melding for elever (10-16 år) om at de må spørre læreren
+- **Tilfeldig passord:** 6-tegns tilfeldig passord genereres for verifiserte lærere
+
+### EmailJS-integrasjon
+- **emailService.js:** Ny tjeneste for e-posthåndtering
+- **EmailJS SDK:** Lagt til for sending av e-post fra nettleseren
+- **Firebase-lagring:** E-postverifiseringer og passord-resets lagres i Firestore
+
+### Oversettelser og i18n
+- **Engelske oversettelser:** Alle nye funksjoner har norsk og engelsk versjon
+- **Nye nøkler:** settings.email, forgotPassword.*, emailVerification.*
+
+### Bugfikser
+- ✅ Passord-endring fikset: Hash-mismatch løst ved lagring av nytt passord
+- ✅ Lærer navn-endring: Lærere kan nå endre sitt visningsnavn
+- ✅ Oversettelsesnøkkel fikset: settings.teacherName viser nå riktig tekst
+
+### Nye filer
+- `js/services/emailService.js` - E-postverifisering og passordgjenoppretting
+
+### Oppdaterte filer
+- `index.html` - EmailJS SDK, nye modaler for glemt passord og e-postbekreftelse
+- `js/main.js` - hashPassword-import, e-postfunksjoner
+- `js/services/languageService.js` - Nye oversettelser for e-post og passord
+- `js/core/auth.js` - statsService-import for innloggingsstatistikk
+
+---
+
+## 🔧 NYE FUNKSJONER I V4.4 (11. desember 2025)
+
+### Firebase Async/Await Fikser
+- **Service-initialisering:** Alle services (business, loan, savings, tax) har nå async `initialize()` metoder
+- **Users Cache:** Brukere caches ved oppstart for synkron `getUserById()` tilgang
+- **Ownership Offers Cache:** Salgstilbud caches for synkron tilgang
+- **getSettings() async:** Alle services awaiter nå innstillinger korrekt
+
+### Skattekasse Firebase-integrasjon
+- **Virtuelle kontoer:** 000 (Sentralbank) og 001 (Skattekasse) fungerer som virtuelle mottakere
+- **taxAccount lagres:** Penger til 001 legges til i classroom.taxAccount i Firebase
+- **Transaksjonslogg:** Overføringer til skattekassen vises i lærerens skattekasse-historikk
+
+### "Alle elever" bulkbetaling
+- **Dropdown-valg:** Lærere kan velge "Alle elever" i betalingsdropdown
+- **Bulk-overføring:** Sender beløp til alle elever i klasserommet samtidig
+- **Oversettelser:** Norsk og engelsk støtte for "Alle elever"
+
+### UI-forbedringer
+- **uiManager.showScreen():** Støtter nå både `data-screen` og `id` attributter
+- **Favicon:** Lagt til 💰 emoji som favicon
+- **Chart.js:** Oppgradert til v4.4.1 for å unngå source map warnings
+
+### Bugfikser
+- ✅ `createBusiness()` er nå async og awaiter `getSettings()` korrekt
+- ✅ `loadLoansAsync()` setter cache i alle fallback-paths
+- ✅ `loadBusinessesAsync()` setter cache i alle fallback-paths  
+- ✅ `loadSavingsAccountsAsync()` og `loadFundAccountsAsync()` setter cache
+- ✅ `initializeUserServices()` fanger feil per tjeneste (én feil stopper ikke andre)
+- ✅ Fjernet sirkulær import: `languageService` ikke lenger importert i `firebaseService`
+- ✅ Firebase `createTransaction()` håndterer virtuelle bankkontoer (000, 001)
+- ✅ `updateUser()` og `createUser()` oppdaterer users cache
+
+---
+
+## 🔥 FUNKSJONER I V4.3 (8. desember 2025)
+
+### Firebase Cloud Database (AKTIVERT)
+- **Cloud-lagring:** All data synkroniseres via Firebase Firestore
+- **Multi-device:** Brukere kan logge inn fra hvilken som helst enhet
+- **Sanntidssynkronisering:** Endringer vises umiddelbart på alle enheter
+- **Offline-støtte:** Fungerer uten internett, synkroniserer når tilkoblet
+- **Webhotell-klar:** Kan kjøres fra ethvert webhotell/domene
+
+### Forbedret klasseromsadministrasjon
+- **Demo-konto (t1):** Egen "Reset til demo-data" knapp (resetter kun demo-klasserom)
+- **Lærere:** "Slett klasse og start på nytt" (sletter alt i eget klasserom)
+- **Superadmin:** "Reset til initial data" (sletter ALL data og starter på nytt)
+- **Transaksjonssletting:** Transaksjoner slettes korrekt når klasserom slettes
+
+### Bugfikser
+- ✅ Deposit/withdraw emojier byttet om (⬇️ innskudd, ⬆️ uttak)
+- ✅ Ansatte-seksjon oppdateres ved språkbytte
+- ✅ Lånesøknader vises korrekt under bedriftslån
+- ✅ Godkjente jobber vises i "Mine aktive jobber"
+- ✅ Lønn fra bedrifter når elevkonto korrekt
+- ✅ Ansatte vises i mottakerliste for meldinger
+- ✅ Transaksjoner får classroomId for korrekt sletting
+
+---
+
+## 🌐 FUNKSJONER I V4.1-4.2
+
+### Flerspråklig støtte (i18n)
+- **Norsk og Engelsk:** Bytt språk når som helst med flagg-knapper
+- **Flagg-knapper:** Plassert øverst til høyre, alltid synlige
+- **Automatisk lagring:** Språkvalg huskes i nettleseren
+- **Data-attributter:** Alle oversettbare tekster bruker `data-i18n`
+
+---
+
+## 🆕 NYE FUNKSJONER I V3.0
+
+### Skattesystem
+- **Progressiv skatt:** 0-500 (0%), 501-2000 (20%), 2001+ (35%)
+- **Flat skatt:** Alternativ med fast prosentsats
+- **Fradrag:** Konfigurerbar fradragsgrense
+- **Skattekonto (000):** Felleskasse for klassen
+- **Skatteoppgjør:** Oversikt for hver elev
+
+### Lånesystem
+- **Opprett lån:** Med nedbetalingsplan og rente
+- **Nedbetalingsplan:** Automatiske avdrag hver uke
+- **Renter:** Konfigurerbar årlig rente
+- **Oversikt:** Status på alle lån (aktive, forsinkede, nedbetalt)
+
+### Bedriftssystem
+- **Start bedrift:** Med egenkapital (standard 500 KKr)
+- **Eierskap:** Dele/selge eierandeler
+- **Ansatte:** Maks ansatte = bedriftssaldo / 500
+- **Bedriftskonto (4XX):** Egen bankkonto for bedriften
+- **Godkjenning:** Lærer kan kreve godkjenning av nye bedrifter
+
+### Spare- og fondssystem
+- **Sparekonto (2XX):** Fast rente 2% årlig
+- **Fondskonto (3XX):** Variabel avkastning 8% ±3%
+- **Ukentlig rente:** Utbetales automatisk hver mandag
+- **Risiko:** Fond kan ha negativ avkastning
+
+### Varslinger
+- Automatiske varsler for lønn, skatt, renter
+- Påminnelser om låneavdrag
+- Varsler om godkjente/avslåtte bedrifter
+
+### Tidsimulering
+- **1 uke = 1 måned:** For raskere simulering
+- **Mandag 08:00:** Automatisk prosessering (lønn, renter, avdrag)
+
+---
+
+## � VISJON OG FORMÅL
 
 ### Hovedmål
 
-En **klasseroms-økonomisimulator** som lar elever lære om:---
-
+En **klasseroms-økonomisimulator** som lar elever lære om:
 - Grunnleggende økonomi og transaksjoner
-
-- Arbeidsmarked (jobbsøking, ansettelse, lønn)## ⚡ HURTIGSTART
-
+- Arbeidsmarked (jobbsøking, ansettelse, lønn)
+- Skatt og avgifter (progressiv vs flat skatt)
+- Sparing og investering (risikovurdering)
+- Lån og gjeld (renter, nedbetaling)
+- Bedrift og entreprenørskap
 - Ansvar og konsekvenser av økonomiske valg
+- Budsjett og ressursforvaltning
 
-- Budsjett og ressursforvaltning## 📄 Prosjektfiler
-
-
-
-### Pedagogiske prinsipper### 1️⃣ Åpne Live Server
-
-- **Likhet:** Alle starter med samme saldo (1000 SKR)
-
-- **Rettferdighet:** Alle kan søke på samme jobber### Viktige filer- Høyreklikk på `index.html`
-
+### Pedagogiske prinsipper
+- **Likhet:** Alle starter med samme saldo
+- **Rettferdighet:** Alle kan søke på samme jobber
 - **Konsekvenser:** Penger brukt er borte → lærer budsjettering
+- **Risiko:** Fond kan gi tap → lærer risikostyring
+- **Ansvar:** Lån må tilbakebetales → lærer gjeldsforståelse
+- **Motivasjon:** Synlig fremgang og realistiske belønninger
 
-- **Motivasjon:** Synlig fremgang og realistiske belønninger- `START.md` - **Les denne først!** Komplett guide- Velg **"Open with Live Server"**
+---
 
-
-
-### Målgruppe og bruk- `index.html` - Hovedfil (åpne med Live Server)- Åpner automatisk: `http://127.0.0.1:5500`
-
-- **Alder:** 13-16 år (ungdomsskole)
-
-- **Setting:** Ett klasserom (1 lærer + 20-30 elever)
-
-- **Varighet:** Kontinuerlig bruk over flere uker/måneder
-
-- **Språk:** Norsk (Bokmål)### Mappestruktur### 2️⃣ Logg inn for demonstrasjon
-
-
-
----```
-
-
-
-## 🏗️ TEKNISK ARKITEKTUR/css        - Styling**Som Lærer:**
-
-
-
-### Stack/js         - All JavaScript-kode- Brukernavn: `laerer`
-
-- **Frontend-only:** Ingen backend nødvendig (perfekt for demo!)
-
-- **HTML5:** Semantisk markup  /core     - Kjernesystem (data, auth, events)- Passord: `passord`
-
-- **Tailwind CSS:** Utility-first styling (CDN)
-
-- **JavaScript ES6+ Modules:** Moderne modulær kode  /services - Business logic
-
-- **localStorage:** Alle data lagres i nettleser
-
-  /ui       - UI management**Som Elev:**
-
-### Fordeler med denne arkitekturen
-
-✅ **Null installasjon** - bare Live Server trengs    /utils    - Hjelpefunksjoner- `kari123` / `passord123`
-
-✅ **Offline-first** - fungerer uten internett  
-
-✅ **Ingen server-kostnader** - helt gratis  ```- `ola456` / `passord456`
-
-✅ **Rask utvikling** - ingen API å bygge  
-
-✅ **Enkel demo** - åpne og kjør umiddelbart  - `emma789` / `passord789`
-
-
-
-### Mappestruktur---
-
-```
+## ⚡ HURTIGSTART
 
 /Prosjekt### 3️⃣ Test funksjonene!
 
@@ -1172,17 +1566,20 @@ Dette manifestet er **kilden til sannhet** for prosjektet. Når du jobber med Ec
 
 **Status:** Aktiv utvikling med AI-assistanse```
 
-econsim_users           // Array av user objects
-
----econsim_transactions    // Array av transaction objects
-
-econsim_jobs           // Array av job objects
-
-**Dette manifestet oppdateres kontinuerlig og reflekterer ALLTID nåværende tilstand av prosjektet.**econsim_applications   // Array av application objects
-
-econsim_settings       // Settings object
-
-**Sist oppdatert:** 16. oktober 2025econsim_session        // Current session object
+econsim_users              // Array av user objects
+econsim_transactions       // Array av transaction objects
+econsim_jobs               // Array av job objects
+econsim_applications       // Array av application objects (statens jobber)
+econsim_jobApplications    // Array av bedrifts-jobbsøknader
+econsim_jobOffers          // Array av jobbtilbud (direkte ansettelser)
+econsim_settings           // Settings object
+econsim_session            // Current session object
+econsim_classrooms         // Array av classrooms
+econsim_businesses         // Array av bedrifter
+econsim_loans              // Array av lån
+econsim_teacherMessages    // Array av lærermeldinger
+econsim_inbox_{userId}     // Array av elevmeldinger per bruker
+econsim_business_messages_{bizId}  // Array av bedriftsmeldinger per bedrift
 
 ```
 
@@ -1355,6 +1752,56 @@ Læreren kan tilpasse:
 
 ## 📝 Endringslogg
 
+### v4.4 (2026-03-15) - Drift, reset og superadmin-forbedringer
+- **Firebase deploy robusthet:** `firebase-tools` lagt til i devDependencies og deploy-script bruker `npx firebase deploy --only hosting`.
+- **Demo-reset fikset (Firebase):**
+   - Nullstilling av demo-klasserom går nå mot Firebase-data (ikke legacy localStorage-kall).
+   - Alle demo-elever slettes og gjenopprettes fra initial-data.
+   - `kari123` er eksplisitt garantert ved reset, med innlogging `kari123` / `passord123`.
+   - Ved oppstart verifiseres også at demo-elev `kari123` finnes med korrekt innlogging.
+   - Overføringshistorikk/transaksjoner, jobber, lån, søknader og annen klassedata nullstilles korrekt.
+   - Login-statistikk for demo-klasserom nullstilles ved reset.
+- **Superadmin sikkerhet:**
+   - Fjernet knapp for global "Nullstill all data" fra dashboard.
+   - Demo-lærer (`t1`) kan ikke slettes fra superadmin.
+   - Andre lærere/klasserom kan fortsatt slettes.
+   - Ved sletting av lærer fra superadmin slettes nå alltid alle klasserom som tilhører læreren, inkludert tilknyttet klassedata.
+   - Ikke-demo klasserom har egen slett-knapp i "Alle klasserom" (inkludert opprydding av tilknyttet lærer/brukere).
+   - Fikset cache-synk ved sletting: superadmin henter nå alltid ferske klasserom fra Firebase, slik at slettede klasserom ikke blir hengende igjen i visningen.
+   - Ny manuell "🔄 Oppdater"-knapp i superadmin-header for å tvinge full refresh av lærere, klasserom og statistikk.
+- **Superadmin statistikk utvidet:**
+   - Innloggingsstatistikk støtter nå **dag, uke, måned og år**.
+   - Mulighet for å velge **spesifikk dag/uke/måned/år** (ikke bare siste perioder).
+   - For **uke, måned og år** brukes rullemeny (dropdown) med tilgjengelige perioder.
+   - Geografisk visning følger valgt tidsintervall, slik at land/fylke-data samsvarer med valgt periode.
+
+### v4.3 (2025-12-08) - Firebase Cloud Edition
+- **Firebase aktivert:** Byttet fra localStorage til Firebase Firestore
+- **Cloud-synkronisering:** Data tilgjengelig fra alle enheter
+- **Webhotell-klar:** Kan deployes til ethvert domene
+- **Forbedret reset-funksjonalitet:**
+  - Demo-konto: "Reset til demo-data" (kun demo-klasserom)
+  - Lærere: "Slett klasse og start på nytt"
+  - Superadmin: "Reset til initial data" (fjernet "Slett ALLE data")
+- **Transaksjoner:** Lagt til classroomId for korrekt sletting
+- **Bugfikser:**
+  - Emoji-swap for deposit/withdraw
+  - Ansatte oppdateres ved språkbytte
+  - Lånesøknader vises korrekt
+  - Jobber vises i aktive jobber
+  - Lønn når elevkonto
+  - Ansatte i mottakerliste
+
+### v4.2 (2025-12-07)
+- Komplett tospråklig versjon (norsk/engelsk)
+- Alle UI-tekster oversatt
+- Flagg-knapper for språkbytte
+
+### v4.1 (2025-12-06)
+- i18n-system implementert
+- languageService opprettet
+- data-i18n attributter på alle elementer
+
 ### v2.0 (2025-10-16)
 - Migrert fra Firebase til lokal-first arkitektur
 - Modulær ES6+ struktur
@@ -1480,4 +1927,446 @@ Både mennesker og AI-assistenter som jobber med prosjektet SKAL oppdatere dette
 
 **Dette dokumentet skal alltid være oppdatert og reflektere nåværende og planlagt tilstand av prosjektet.**
 
-**Sist oppdatert:** 16. oktober 2025 (v2.2)
+**Sist oppdatert:** 6. desember 2025 (v4.1)
+
+---
+
+### Version 4.2 (7. desember 2025 - Complete Bilingual Edition)
+
+#### ✅ Nye funksjoner:
+
+1. **🔒 Demo-konto beskyttelse**
+   - Demo-lærerkontoen (t1) kan ikke endre brukernavn/passord
+   - Felt deaktiveres automatisk for demo-konto
+   - Andre lærerkontoer kan fortsatt endre sine innloggingsopplysninger
+   - Tydelig melding til brukeren om hvorfor feltene er låst
+
+2. **🌐 Komplett flerspråklig støtte**
+   - 100+ nye oversettelsesnøkler lagt til
+   - Alle hardkodede norske tekster erstattet med `languageService.t()`
+   - Innstillingssiden fullstendig oversatt
+   - Transaksjonshistorikk oversettes dynamisk med `translateTransactionDescription()`
+   - Språkbytte oppdaterer nå all dynamisk innhold i sanntid
+
+3. **📬 Meldingssystem fikset**
+   - Bedrifter vises nå i mottaker-dropdown for elever
+   - Bruker `businessService.getBusinessesByClassroom()` i stedet for `classroom.businesses`
+   - Lærerens meldingsfunksjon viser nå alle bedrifter i klasserommet
+   - Bedriftsmeldinger viser andre bedrifter som mulige mottakere
+
+4. **↩️ Svar-funksjon for meldinger**
+   - Ny "Svar"-knapp på meldinger mellom elever, bedrifter og lærer
+   - Automatisk genererte meldinger (kontrakter, systemvarsler) har ikke svar-knapp
+   - Svaret inkluderer original melding formatert som sitat
+   - "Re:" prefiks legges automatisk til tittelen
+   - Mottaker forhåndsutfylles automatisk
+   - Fungerer for student-, bedrift- og lærer-meldinger
+
+5. **🔄 Språkbytte oppdaterer dynamisk innhold**
+   - "Mine kontoer"-boksen oppdateres ved språkbytte
+   - Elevtabell med kolonneoverskrifter oppdateres
+   - "Velg elev" dropdown oppdateres
+   - Skattehistorikk (Fra/Til) oppdateres
+   - Tabellayout tilpasset for begge språk (table-fixed)
+
+#### 🌍 Nye oversettelsesnøkler (utvalg):
+
+**Innstillinger:**
+- `settings.startingCapital` - Startkapital / Starting capital
+- `settings.currency` - Valuta / Currency
+- `settings.taxSystem` - Skattesystem / Tax system
+- `settings.enableTax` - Aktiver skatt / Enable tax
+- `settings.flatTax` / `settings.progressiveTax`
+- `settings.loanSystem` - Lånesystem / Loan system
+- `settings.savingsAndFunds` - Sparing og fond / Savings and funds
+- `settings.businessFeatures` - Bedriftsfunksjoner / Business features
+- `settings.demoAccountLocked` / `settings.demoAccountNote`
+
+**Meldinger:**
+- `inbox.noTeacher` / `inbox.noClassmates` / `inbox.noBusinesses`
+- `inbox.classmates` - Medelever / Classmates
+- `inbox.otherStudents` / `inbox.otherBusinesses`
+
+**Transaksjoner:**
+- `transaction.finalSalaryFromClosed` - Sluttlønn fra nedlagt bedrift
+- `transaction.saleOfShareIn` - Salg av andel i...
+- `transaction.partialLoanPayment` - Delvis nedbetaling av lån
+
+**Feilmeldinger:**
+- 55+ nye feilmeldingsnøkler oversatt
+- `error.passwordMismatch`, `error.usernameInUse`, etc.
+
+#### 🐛 Bugfikser:
+
+1. **Meldingsrecipients ikke vist**
+   - `loadMessageRecipients()` brukte ikke-eksisterende `classroom.businesses`
+   - Fikset til å bruke `businessService.getBusinessesByClassroom(classroomId)`
+
+2. **Språkbytte oppdaterte ikke dynamisk innhold**
+   - `onLanguageChange()` utvidet til å re-rendre flere komponenter
+   - Lagt til `loadStudentAccountsSummary()`, `loadStudentsTable()`, etc.
+
+3. **Tabellayout ødelagt ved engelsk**
+   - Engelske kolonneoverskrifter lengre enn norske
+   - Fikset med `table-fixed` og eksplisitte kolonnebredder
+
+4. **Elevadministrasjon modal-tittel ikke oversatt**
+   - Lagt til `data-i18n="teacher.studentAdmin"` på modal-tittel
+
+#### 📁 Endrede filer:
+- `index.html`:
+  - 30+ nye `data-i18n` attributter på innstillingssiden
+  - Elevadministrasjon modal-tittel
+  
+- `js/main.js`:
+  - `showSettingsModal()` - Demo-konto beskyttelse
+  - `saveSettings()` - Forhindrer endring for demo-konto
+  - `loadMessageRecipients()` - Bruker businessService
+  - `loadBusinessMessages()` - Bruker businessService
+  - `loadTeacherMessages()` - Bruker businessService
+  - `onLanguageChange()` - Oppdaterer flere komponenter
+  - `loadStudentsTable()` - Oversatte headers, table-fixed layout
+
+- `js/services/languageService.js`:
+  - 100+ nye oversettelsesnøkler (norsk og engelsk)
+  - Innstillinger, meldinger, feilmeldinger, transaksjoner
+
+- `js/utils/formatters.js`:
+  - `translateTransactionDescription()` - 50+ mønstre for transaksjonsoversettelse
+
+---
+
+### Version 4.1 (6. desember 2025 - Multi-Language Edition)
+
+#### ✅ Nye funksjoner:
+
+1. **🌐 Flerspråklig støtte (i18n)**
+   - Norsk og engelsk språk
+   - Flagg-knapper øverst til høyre (🇳🇴 Norge, 🇬🇧 UK)
+   - Språkvalg lagres i localStorage
+   - `languageService.js` håndterer all oversettelse
+   - `data-i18n` attributter på oversettbare elementer
+
+2. **🔥 Firebase-forberedelse**
+   - `firebaseService.js` - Firebase konfigurasjon og tilkobling
+   - `dataService.firebase.js` - Cloud database implementasjon
+   - `dataService.localStorage.js` - Backup av lokal lagring
+   - Automatisk fallback til localStorage hvis Firebase ikke er konfigurert
+
+#### 📁 Nye filer:
+- `js/services/languageService.js` - Språktjeneste med oversettelser
+- `js/core/firebaseService.js` - Firebase konfigurasjon
+- `js/core/dataService.firebase.js` - Firebase datalag
+- `js/core/dataService.localStorage.js` - localStorage backup
+
+#### ⚙️ Endrede filer:
+- `index.html` - Språkvelger-knapper, Firebase SDK, data-i18n attributter
+- `js/main.js` - Import og initialisering av languageService
+- `js/core/dataService.js` - Velger mellom Firebase og localStorage
+- `MANIFEST.md` - Dokumentert nye funksjoner
+
+---
+
+### Version 3.2 (5. desember 2025 - Modal Edition)
+
+#### ✅ Nye funksjoner:
+
+1. **✏️ Bedriftsredigering via modal**
+   - Fjernet "Innstillinger"-fane fra bedriftsdashboardet
+   - Ny "✏️ Rediger bedrift" hyperlink under bedriftslogo/kontonummer
+   - `showEditBusinessModal()` - åpner modal med bedriftsdata
+   - `handleEditBusinessLogo()` - logo-opplasting i modalen
+   - Samme modal-design som "Start bedrift"
+
+2. **🗑️ Forbedret nedleggelse av bedrift**
+   - Fjernet forhåndsvisning ("previewCloseBusiness")
+   - Ny `showCloseBusinessConfirm()` - viser advarselsmodal
+   - Tydelig advarselsmelding om konsekvenser
+   - Enkel bekreftelse med "Legg ned bedrift" og "Avbryt"
+   - `confirmCloseBusiness()` - utfører nedleggelse direkte
+
+3. **📧 Kombinerte meldinger - Ansettelse**
+   - Jobbmelding og arbeidskontrakt kombinert til én melding
+   - Format: 🎉 GRATULERER MED JOBB! + detaljer + ═══ + 📜 ARBEIDSKONTRAKT
+   - Inkluderer stillingstittel, lønn, arbeidstype, arbeidsgiver
+   - Full kontrakttekst i samme melding
+
+4. **📧 Kombinerte meldinger - Lån**
+   - Lånegodkjenning, kontrakt og nedbetalingsplan i én melding
+   - Format: 🎉 GRATULERER + godkjenning + ═══ + 📜 LÅNEKONTRAKT + ═══ + 📅 NEDBETALINGSPLAN
+   - Nedbetalingsplan viser uke-for-uke: beløp og gjenstående saldo
+   - Viser totalt renter som betales
+   - Lærerens beskjed inkluderes om oppgitt
+
+#### 🎨 UI/UX-forbedringer:
+
+1. **Bedriftsvelger-knapper**
+   - Større knapper for å velge bedrift (px-6 py-3, text-base, font-medium)
+   - Bedre kontrast og synlighet
+   - Skygge på knappene (shadow-md)
+
+2. **Bedriftsfane-knapper**
+   - Redusert tilbake til 5 faner (fjernet Innstillinger)
+   - Mindre knapper (px-3 py-2, text-sm)
+   - 5-kolonnes layout
+
+3. **Nye modaler**
+   - `editBusinessModal` - rediger logo, navn, beskrivelse
+   - `closeBusinessModal` - advarsel og bekreftelse for nedleggelse
+
+#### 🐛 Bugfikser:
+
+1. **Feil property-navn i bedriftsfunksjoner**
+   - Rettet `business.ownership` → `business.owners`
+   - Rettet `owner.ownerId` → `owner.userId`
+   - Rettet `owner.share` → `owner.percentage`
+
+2. **Feil formatering av valuta**
+   - Rettet `formatters.currency()` → `formatCurrency(amount, currencySymbol)`
+
+3. **Lærer-meldinger fra "System"**
+   - Endret alle "System" avsendere til "Banken" for konsistens
+
+#### 📁 Endrede filer:
+- `index.html`:
+  - Fjernet businessSettingsTab helt
+  - Endret grid til 5 kolonner for bedriftsfaner
+  - Lagt til "✏️ Rediger bedrift" hyperlink i bedriftsheader
+  - Ny editBusinessModal med logo-opplasting
+  - Ny closeBusinessModal med advarsel
+
+- `js/main.js`:
+  - Nye funksjoner:
+    - `showEditBusinessModal()` - viser redigeringsmodal
+    - `handleEditBusinessLogo()` - håndterer logofil
+    - `showCloseBusinessConfirm()` - viser advarselsmodal
+  - Fjernede funksjoner:
+    - `loadBusinessSettings()` (erstattet av modal)
+    - `previewCloseBusiness()` (erstattet av enkel modal)
+  - Oppdaterte funksjoner:
+    - `selectBusiness()` - større knapper
+    - `confirmCloseBusiness()` - direkte nedleggelse uten preview
+    - `generateEmploymentContract()` - kombinert gratulasjon + kontrakt
+    - `generateLoanContract()` - kombinert godkjenning + kontrakt + nedbetalingsplan
+    - `approveLoanApplication()` - fjernet separat godkjennelses-melding
+  - Fikset property-navn: ownership→owners, ownerId→userId, share→percentage
+
+#### 🔧 Tekniske detaljer:
+- `generateLoanContract(loan, borrowerId, borrowerType, teacherReason = '')` - ny parameter for lærer-beskjed
+- Nedbetalingsplan beregnes dynamisk med weeklyPayment og gjenstående saldo
+- Meldingstype `loan_approved` erstatter separate `loan_contract` meldinger
+- Arbeidskontrakt-melding har type `employment_contract` med kombinert innhold
+
+---
+
+**Sist oppdatert:** 4. desember 2025 (v3.1)
+
+---
+
+### Version 3.1 (4. desember 2025 - Meldingssystem og UI-forbedringer)
+
+#### ✅ Nye funksjoner:
+
+1. **📬 Komplett meldingssystem med kategorier**
+   - **Elev-innboks:** System, Arbeidsgivere, Generelt
+   - **Lærer-innboks:** System, Lån, Bedrifter, Generelt
+   - **Bedrifts-innboks:** Banken (lån/skatt), Ansatte, Generelt
+   - To-kolonners layout: Send melding (venstre) + Mottatte meldinger (høyre)
+   - Klikkbare meldinger åpnes i modal med print-funksjon
+
+2. **📋 Arbeidskontrakter**
+   - Genereres automatisk ved ansettelse
+   - Inkluderer stillingsbeskrivelse, lønn, type og vilkår
+   - Sendes til både arbeidstaker og bedrift
+   - Kan åpnes og skrives ut
+
+3. **🔔 Notifikasjonssystem**
+   - Badge på meldinger viser antall uleste
+   - Badge på jobber viser ventende tilbud
+   - `seenByApplicant`-flagg for behandlede jobbtilbud
+   - Notifikasjoner forsvinner når bruker interagerer
+
+4. **💰 Skattestatistikk (Lærer)**
+   - `taxThisWeek` - skatteinntekter siste 7 dager
+   - `taxTotal` - totale skatteinntekter
+   - `taxSpentTotal` - totalt brukt fra skattekassen
+   - Scrollbar på skattetransaksjonshistorikk
+
+5. **🔍 Søkefunksjon i transaksjoner**
+   - Søk i elev-, lærer- og bedriftstransaksjoner
+   - Caching av transaksjoner for rask filtrering
+   - `filterStudentTransactions()`, `filterTeacherTransactions()`, `filterBusinessTransactions()`
+
+#### 🎨 UI/UX-forbedringer:
+
+1. **Lærer-dashboard layout**
+   - "Gi penger" og "Elevoversikt" bokser: `min-h-[420px]` matcher meldingsboksene
+   - Scrollbar på elevoversikt: `max-h-[340px]`
+   - Fikset emojis på faner: 📊 Oversikt, 🏦 Lån, 💰 Skattekasse
+
+2. **Jobbkort-layout (Lærer)**
+   - Available: "📋 Se søknader" øverst (full bredde), "✏️ Rediger" + "🗑️ Slett" under
+   - Active: "💰 Betal lønn" + "📊 Delvis utbetal" øverst, "✏️ Rediger" + "✅ Avslutt" under
+   - Completed: "♻️ Legg ut på nytt" (full bredde)
+
+3. **Header-knapper**
+   - Elev: Logg ut, Innstillinger, Meldinger vertikalt på høyre side
+   - Lærer: Logg ut, Innstillinger, Admin, Meldinger vertikalt
+
+4. **Bedrifts-innboks**
+   - "System" omdøpt til "🏦 Banken"
+   - Inkluderer nå: lån, lånesøknader, skattemeldinger, kontrakter
+
+#### 🐛 Bugfikser:
+
+1. **Jobbtilbud-notifikasjon**
+   - Badge forsvinner nå korrekt når tilbud aksepteres/avvises
+   - `seenByApplicant: true` settes ved accept/reject
+
+2. **Ødelagte emojis**
+   - Fikset "📋 Se søknader" og "💰 Betal lønn" i jobbkort
+   - Fikset fane-emojis: Oversikt, Lån, Skattekasse
+
+3. **Skattestatistikk oppdateres ikke**
+   - `loadTeacherTax()` beregner nå korrekt taxThisWeek, taxTotal, taxSpentTotal
+   - Bruker riktig valutasymbol fra settings
+
+#### 📁 Endrede filer:
+- `index.html` - Layout-endringer, nye elementer, emoji-fikser
+- `js/main.js` - Nye funksjoner:
+  - `openStudentMessage()`, `openTeacherMessage()`, `openBusinessMessage()`
+  - `filterStudentTransactions()`, `filterTeacherTransactions()`, `filterBusinessTransactions()`
+  - `generateEmploymentContract()` - nå med stillingsbeskrivelse
+  - `updateJobsBadge()` - forbedret logikk
+  - `loadTeacherTax()` - med statistikkberegning
+
+#### 🔧 Tekniske detaljer:
+- Transaksjonscaching: `cachedStudentTransactions`, `cachedTeacherTransactions`, `cachedBusinessTransactions`
+- Meldingstyper for bank: `tax`, `loan`, `loan_application`, `loan_contract`, `loan_payment`, `loan_approved`, `loan_rejected`
+- Jobbtilbud lagrer nå `jobDescription` for arbeidskontrakt
+
+---
+
+### Version 2.3 (29. november 2025 - UI/UX og sikkerhet)
+
+#### ✅ Forbedringer:
+
+1. **🔐 Forbedret Login-skjerm**
+   - Nytt moderne design med ikon og gradient
+   - Loading-spinner under innlogging
+   - Vis/skjul passord-knapp (👁️/🙈)
+   - Inline feilmeldinger i stedet for toast
+   - Autocomplete på brukernavn og passord
+   - Bedre validering av input-felt
+   - Smooth CSS-animasjoner (fade-in, focus)
+
+2. **🛡️ XSS-sikkerhet**
+   - Importert `escapeHtml()` fra helpers.js
+   - All brukergenerert input escapes før visning i HTML
+   - Transaksjonshistorikk (student og lærer) bruker nå escapeHtml()
+   - Beskytter mot ondsinnet kode-injeksjon
+
+3. **🎨 CSS-forbedringer**
+   - Linket til `css/styles.css` i index.html
+   - Lagt til custom animasjoner for login
+   - Password toggle styling
+   - Input focus-effekter
+
+4. **📄 Meta-tags**
+   - Lagt til meta description for SEO
+   - Lagt til theme-color for mobile browsers
+
+#### 📁 Oppdaterte filer:
+- `index.html` - forbedret login-skjerm, CSS-link, meta-tags
+- `js/main.js` - ny login-håndtering med loading state, escapeHtml import
+
+#### 🔧 Tekniske detaljer:
+- Login-knappen deaktiveres under innlogging
+- Feilmeldinger vises inline (ikke toast) for bedre UX
+- escapeHtml() brukes på alle steder der brukerinput vises
+
+---
+
+### Version 2.4 (4. desember 2025 - Bedriftsinnstillinger og Dashboard-forbedringer)
+
+#### ✅ Ny funksjonalitet:
+
+1. **⚙️ Bedriftsinnstillinger-fane**
+   - Ny "Innstillinger"-fane i bedriftsdashboardet
+   - Rediger bedriftsnavn, logo (emoji), og beskrivelse
+   - `loadBusinessSettings()` - fyller inn eksisterende verdier
+   - `handleEditBusiness()` - lagrer endringer
+
+2. **🗑️ Legg ned bedrift**
+   - Forhåndsvisning av avvikling: saldo, lønnsutbetaling, utbytte
+   - `previewCloseBusiness()` - beregner og viser hva som skjer
+   - `confirmCloseBusiness()` - utfører nedleggelse
+   - Automatisk lønnsutbetaling til alle ansatte
+   - Automatisk utbyttefordeling til eiere basert på eierandel
+   - Fjerner alle jobber for ansatte
+   - Sletter bedriften permanent
+
+3. **🏦 Mine kontoer-oversikt (Elev)**
+   - Ny boks på elevdashboardet som viser:
+     - 💳 Privatkonto
+     - 🏦 Sparekonto
+     - 📈 Fondskonto
+     - 🏦 Aktive lån (negativt)
+     - Sum (total formue)
+   - `loadStudentAccountsSummary()` - beregner og viser alle kontoer
+
+4. **💼 Forbedret jobbvisning**
+   - "Mine aktive jobber" flyttet til egen boks over statistikk-knappen
+   - Viser nå bedriftslogo og bedriftsnavn for hver jobb
+   - Bedre layout med større logoer og tydeligere info
+
+#### 🎨 UI/UX-forbedringer:
+
+1. **Elev innboks**
+   - "System" omdøpt til "🏦 Banken"
+   - Oppdatert placeholder-tekst til "Ingen meldinger fra banken"
+
+2. **Bedriftsfaner**
+   - Større faneknapper (py-3, font-medium)
+   - 6-kolonne layout på desktop (grid-cols-3 md:grid-cols-6)
+   - Skygge og hover-effekter på alle faner
+
+3. **Overføringer-fane (Bedrift)**
+   - Ny rekkefølge: Betal lønn → Kjøp/Betal → Innskudd/Uttak
+
+#### 🐛 Bugfikser:
+
+1. **Feil property-navn i bedriftsfunksjoner**
+   - Rettet `business.ownership` → `business.owners`
+   - Rettet `owner.ownerId` → `owner.userId`
+   - Rettet `owner.share` → `owner.percentage`
+
+2. **Feil formatering av valuta**
+   - Rettet `formatters.currency()` → `formatCurrency()`
+   - Lagt til currencySymbol fra settings
+
+3. **Jobbnotifikasjon-badge**
+   - Viser nå kun antall ventende jobbtilbud (ikke aksepterte søknader)
+   - Forenklet `updateJobsBadge()` logikk
+
+#### 📁 Endrede filer:
+- `index.html`:
+  - Ny businessSettingsTab med rediger- og nedleggelsesform
+  - Endret elev innboks fra "System" til "Banken"
+  - Ny "Mine kontoer" boks og flyttet "Mine aktive jobber"
+  - Større bedriftsfane-knapper
+
+- `js/main.js`:
+  - Nye funksjoner: `loadBusinessSettings()`, `handleEditBusiness()`, `previewCloseBusiness()`, `confirmCloseBusiness()`
+  - Ny funksjon: `loadStudentAccountsSummary()`
+  - Oppdatert `loadStudentActiveJobsSummary()` med bedriftslogo
+  - Lagt til event listener for editBusinessForm
+  - Oppdatert showBusinessTab() til å håndtere 'settings'
+
+#### 🔧 Tekniske detaljer:
+- Business owners bruker: `{ userId, percentage, costBasis }`
+- Employees bruker: `{ userId, salary, title, startDate }`
+- Nedleggelse: lønn betales først, deretter utbytte
+- Utbytte beregnes som: `(remainingBalance * percentage) / 100`
+
+---

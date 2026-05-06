@@ -1,7 +1,8 @@
 # 🚀 EconSim - Økonomisimulator
 
-**Versjon:** 2.1 - Live Preview Edition  
-**Opprettet:** Oktober 2025
+**Versjon:** 2.3 - Forbedret UI/UX  
+**Opprettet:** Oktober 2025  
+**Sist oppdatert:** November 2025
 
 ---
 
@@ -24,6 +25,8 @@
 - `emma789` / `passord789` (Emma Larsen - Konto: 103)
 
 💡 **Du forblir innlogget** til du logger ut!
+
+🔒 **Tips:** Klikk på 👁️ for å vise/skjule passord
 
 ---
 

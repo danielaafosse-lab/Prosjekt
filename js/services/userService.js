@@ -12,24 +12,57 @@ import {
   validateName,
   validateAccountNumber
 } from '../utils/validators.js';
+import { hashPassword } from '../utils/helpers.js';
 import { USER_TYPES } from '../config.js';
+import { classroomService } from './classroomService.js';
+import { languageService } from './languageService.js';
+import { savingsService } from './savingsService.js';
 
 class UserService {
   /**
-   * Hent alle elever (kun lærer)
+   * Hent alle elever i lærerens klasserom (kun lærer)
    * @returns {Promise<Array>} - Array av elever
    */
   async getAllStudents() {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan se alle elever');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanViewAllStudents'));
       }
       
-      const users = await dataService.getUsers();
-      return users
-        .filter(u => u.type === USER_TYPES.STUDENT)
-        .sort((a, b) => a.name.localeCompare(b.name));
+      // Hent lærerens klasserom fra Firebase
+      let classroomId = null;
+      
+      // Prøv å hente classroom ID fra dataService (Firebase)
+      if (dataService.getCurrentClassroomId) {
+        classroomId = await dataService.getCurrentClassroomId();
+      }
+      
+      // Fallback: bruk classroomService
+      if (!classroomId) {
+        const classroom = await classroomService.getClassroomByTeacherAsync(currentUser.id);
+        classroomId = classroom?.id;
+      }
+      
+      if (!classroomId) {
+        console.warn('⚠️ Ingen klasserom funnet for lærer:', currentUser.id);
+        return [];
+      }
+      
+      console.log('📚 Henter elever for klasserom:', classroomId);
+      
+      // Hent alle brukere fra Firebase
+      if (dataService.getUsers) {
+        const allUsers = await dataService.getUsers();
+        const students = allUsers.filter(u => 
+          u.type === 'student' && u.classroomId === classroomId
+        );
+        console.log('👥 Fant', students.length, 'elever i klasserom');
+        return students;
+      }
+      
+      // Fallback til classroomService
+      return classroomService.getStudentsByClassroom(classroomId);
     } catch (error) {
       console.error('Feil ved henting av elever:', error);
       throw error;
@@ -37,16 +70,24 @@ class UserService {
   }
 
   /**
-   * Legg til ny elev (kun lærer)
+   * Legg til ny elev i lærerens klasserom (kun lærer)
    * @param {Object} studentData - { name, username, password, accountNumber }
    * @returns {Promise<Object>} - Opprettet elev
    */
   async addStudent(studentData) {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan legge til elever');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanAddStudents'));
       }
+      
+      // Hent lærerens klasserom fra Firebase
+      let classroom = await classroomService.getClassroomByTeacherAsync(currentUser.id);
+      if (!classroom) {
+        throw new Error(languageService.t('error.needClassroomToAddStudents'));
+      }
+      
+      console.log('📚 Legger til elev i klasserom:', classroom.id);
       
       // Valider input
       const nameValidation = validateName(studentData.name);
@@ -64,7 +105,13 @@ class UserService {
         throw new Error(passwordValidation.error);
       }
       
-      const accountValidation = validateAccountNumber(studentData.accountNumber);
+      // Generer kontonummer automatisk hvis ikke oppgitt
+      let accountNumber = studentData.accountNumber;
+      if (!accountNumber) {
+        accountNumber = classroomService.generateAccountNumber(classroom.id, 'student');
+      }
+      
+      const accountValidation = validateAccountNumber(accountNumber);
       if (!accountValidation.valid) {
         throw new Error(accountValidation.error);
       }
@@ -72,16 +119,26 @@ class UserService {
       // Hent startbalanse fra settings
       const settings = await dataService.getSettings();
       
-      // Opprett student
+      // Opprett student med classroomId
       const student = await dataService.createUser({
         name: studentData.name.trim(),
         username: studentData.username.trim(),
         password: studentData.password, // Blir hashet i dataService
-        accountNumber: studentData.accountNumber.trim(),
+        initialPassword: studentData.initialPassword || null, // Klartekst for print-liste
+        accountNumber: accountNumber.trim(),
         type: USER_TYPES.STUDENT,
-        balance: settings.startingBalance || 1000
+        balance: settings.startingBalance || 1000,
+        classroomId: classroom.id // Viktig: Koble til klasserom
       });
       
+      // Opprett spare- og fondskonto automatisk
+      try {
+        await savingsService.createSavingsAccount(student.id);
+        await savingsService.createFundAccount(student.id);
+      } catch (e) {
+        console.warn('⚠️ Kunne ikke opprette spare-/fondskonto automatisk:', e.message);
+      }
+
       eventBus.emit(EVENTS.USER_CREATED, student);
       return student;
     } catch (error) {
@@ -91,25 +148,31 @@ class UserService {
   }
 
   /**
-   * Slett elev (kun lærer)
+   * Slett elev (kun lærer, kun i eget klasserom)
    * @param {string} studentId - Elev ID
    * @returns {Promise<boolean>}
    */
   async deleteStudent(studentId) {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan slette elever');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanDeleteStudents'));
       }
       
       // Sjekk at det er en student
       const student = await dataService.getUser(studentId);
       if (!student) {
-        throw new Error('Bruker ikke funnet');
+        throw new Error(languageService.t('error.userNotFound'));
       }
       
       if (student.type !== USER_TYPES.STUDENT) {
-        throw new Error('Kan kun slette elever');
+        throw new Error(languageService.t('error.canOnlyDeleteStudents'));
+      }
+      
+      // Sjekk at eleven tilhører lærerens klasserom
+      const classroom = await classroomService.getClassroomByTeacherAsync(currentUser.id);
+      if (!classroom || student.classroomId !== classroom.id) {
+        throw new Error(languageService.t('error.canOnlyDeleteFromOwnClassroom'));
       }
       
       await dataService.deleteUser(studentId);
@@ -122,7 +185,7 @@ class UserService {
   }
 
   /**
-   * Oppdater elev (kun lærer)
+   * Oppdater elev (kun lærer, kun i eget klasserom)
    * @param {string} studentId - Elev ID
    * @param {Object} updates - Oppdateringer
    * @returns {Promise<Object>} - Oppdatert elev
@@ -130,8 +193,19 @@ class UserService {
   async updateStudent(studentId, updates) {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan oppdatere elever');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanUpdateStudents'));
+      }
+      
+      // Sjekk at eleven tilhører lærerens klasserom
+      const student = await dataService.getUser(studentId);
+      if (!student) {
+        throw new Error(languageService.t('error.studentNotFound'));
+      }
+      
+      const classroom = await classroomService.getClassroomByTeacherAsync(currentUser.id);
+      if (!classroom || student.classroomId !== classroom.id) {
+        throw new Error(languageService.t('error.canOnlyUpdateFromOwnClassroom'));
       }
       
       // Valider relevante felt
@@ -145,6 +219,15 @@ class UserService {
         const validation = validateUsername(updates.username);
         if (!validation.valid) throw new Error(validation.error);
         updates.username = updates.username.trim();
+
+        // Sjekk om brukernavnet allerede er i bruk av en annen bruker
+        const users = dataService.getUsersSync() || [];
+        const existingUser = users.find(u =>
+          u.username === updates.username && u.id !== studentId
+        );
+        if (existingUser) {
+          throw new Error(languageService.t('error.usernameInUse'));
+        }
       }
       
       if (updates.accountNumber) {
@@ -153,13 +236,20 @@ class UserService {
         updates.accountNumber = updates.accountNumber.trim();
       }
       
+      // Hash passord hvis det er oppgitt
+      if (updates.password) {
+        const validation = validatePassword(updates.password);
+        if (!validation.valid) throw new Error(validation.error);
+        updates.password = await hashPassword(updates.password);
+      }
+      
       // Ikke tillat endring av type
       if (updates.type) {
         delete updates.type;
       }
       
-      const student = await dataService.updateUser(studentId, updates);
-      return student;
+      const updatedStudent = await dataService.updateUser(studentId, updates);
+      return updatedStudent;
     } catch (error) {
       console.error('Feil ved oppdatering av elev:', error);
       throw error;
@@ -195,23 +285,24 @@ class UserService {
   }
 
   /**
-   * Generer neste ledige kontonummer
+   * Generer neste ledige kontonummer for lærerens klasserom
    * @returns {Promise<string>} - Neste kontonummer
    */
   async generateNextAccountNumber() {
     try {
-      const users = await dataService.getUsers();
-      const accountNumbers = users
-        .map(u => parseInt(u.accountNumber))
-        .filter(num => !isNaN(num))
-        .sort((a, b) => b - a);
-      
-      if (accountNumbers.length === 0) {
-        return '101'; // Start med 101 for elever
+      const currentUser = authService.getCurrentUser();
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanGenerateAccountNumber'));
       }
       
-      const highest = accountNumbers[0];
-      return (highest + 1).toString().padStart(3, '0');
+      // Hent lærerens klasserom
+      const classroom = await classroomService.getClassroomByTeacherAsync(currentUser.id);
+      if (!classroom) {
+        return '101'; // Standard startnummer hvis ingen klasserom
+      }
+      
+      // Bruk classroomService til å generere neste nummer
+      return classroomService.generateAccountNumber(classroom.id, 'student');
     } catch (error) {
       console.error('Feil ved generering av kontonummer:', error);
       throw error;
@@ -219,14 +310,14 @@ class UserService {
   }
 
   /**
-   * Statistikk for alle elever (kun lærer)
+   * Statistikk for alle elever i klasserommet (kun lærer)
    * @returns {Promise<Object>} - Statistikk
    */
   async getStudentStatistics() {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan se statistikk');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanViewStats'));
       }
       
       const students = await this.getAllStudents();
@@ -255,6 +346,25 @@ class UserService {
       console.error('Feil ved henting av statistikk:', error);
       throw error;
     }
+  }
+
+  /**
+   * Synkron versjon av getAllStudents
+   * Brukes når du trenger data umiddelbart uten await
+   * Filtrerer på lærerens klasserom
+   */
+  getAllStudentsSync() {
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+      return [];
+    }
+    
+    const classroom = classroomService.getClassroomByTeacher(currentUser.id);
+    if (!classroom) {
+      return [];
+    }
+    
+    return classroomService.getStudentsByClassroom(classroom.id);
   }
 }
 

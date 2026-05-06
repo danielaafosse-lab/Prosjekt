@@ -1,16 +1,19 @@
 /**
  * Transaction Service
- * Håndterer alle transaksjonsoperasjoner
+ * Håndterer alle transaksjonsoperasjoner med classroom isolation
  */
 
 import { dataService } from '../core/dataService.js';
 import { authService } from '../core/auth.js';
 import { eventBus, EVENTS } from '../core/eventBus.js';
 import { validateAmount } from '../utils/validators.js';
+import { classroomService } from './classroomService.js';
+import { ACCOUNT_PREFIXES, USER_TYPES } from '../config.js';
+import { languageService } from './languageService.js';
 
 class TransactionService {
   /**
-   * Overfør penger fra én bruker til en annen
+   * Overfør penger fra én bruker til en annen (innen samme klasserom)
    * @param {string} recipientAccountNumber - Mottakers kontonummer
    * @param {number} amount - Beløp
    * @param {string} message - Valgfri melding
@@ -26,23 +29,63 @@ class TransactionService {
       
       const currentUser = authService.getCurrentUser();
       if (!currentUser) {
-        throw new Error('Du må være logget inn for å overføre penger');
+        throw new Error(languageService.t('error.mustBeLoggedInToTransfer'));
       }
       
-      // Hent mottaker
-      const recipient = await dataService.getUserByAccountNumber(recipientAccountNumber);
-      if (!recipient) {
-        throw new Error('Mottaker ikke funnet');
+      // Sjekk om det er en spesialkonto (sentralbank/skattekasse)
+      const isCentralBank = recipientAccountNumber === ACCOUNT_PREFIXES.centralBank || recipientAccountNumber === '000';
+      const isTaxAccount = recipientAccountNumber === ACCOUNT_PREFIXES.taxAccount || recipientAccountNumber === '001';
+      
+      let recipient;
+      
+      if (isCentralBank) {
+        // Sentralbanken - virtuell konto
+        recipient = {
+          id: 'central-bank',
+          name: languageService.t('accounts.centralBank') || 'Sentralbanken',
+          accountNumber: '000',
+          type: 'bank',
+          classroomId: currentUser.classroomId
+        };
+      } else if (isTaxAccount) {
+        // Skattekassen - virtuell konto
+        recipient = {
+          id: 'tax-account',
+          name: languageService.t('accounts.taxAccount') || 'Skattekassen',
+          accountNumber: '001',
+          type: 'bank',
+          classroomId: currentUser.classroomId
+        };
+      } else {
+        // Hent vanlig mottaker - send med classroomId for å sikre riktig bruker
+        recipient = await dataService.getUserByAccountNumber(
+          recipientAccountNumber, 
+          currentUser.classroomId
+        );
+        if (!recipient) {
+          throw new Error(languageService.t('error.recipientNotFound'));
+        }
       }
       
       // Kan ikke sende til seg selv
       if (recipient.id === currentUser.id) {
-        throw new Error('Du kan ikke sende penger til deg selv');
+        throw new Error(languageService.t('error.cannotSendToYourself'));
+      }
+      
+      // Sjekk classroom isolation for studenter
+      if (currentUser.type === USER_TYPES.STUDENT) {
+        // Studenter kan kun sende til andre i samme klasserom
+        // (inkl. sentralbank 000 og skattekasse 001)
+        const isBankAccount = isCentralBank || isTaxAccount;
+        
+        if (!isBankAccount && recipient.classroomId !== currentUser.classroomId) {
+          throw new Error(languageService.t('error.canOnlySendToOwnClassroom'));
+        }
       }
       
       // Sjekk at avsender har nok penger (ikke for lærer/bank)
-      if (currentUser.type !== 'teacher' && currentUser.balance < amountValidation.value) {
-        throw new Error('Ikke nok penger på konto');
+      if (currentUser.type !== USER_TYPES.TEACHER && currentUser.balance < amountValidation.value) {
+        throw new Error(languageService.t('error.insufficientAccountBalance'));
       }
       
       // Opprett transaksjon (dette oppdaterer også saldoer)
@@ -50,7 +93,8 @@ class TransactionService {
         senderId: currentUser.id,
         recipientId: recipient.id,
         amount: amountValidation.value,
-        message: message.trim()
+        message: message.trim(),
+        classroomId: currentUser.classroomId // Legg til classroom ID
       });
       
       // Refresh current user data
@@ -68,7 +112,7 @@ class TransactionService {
   }
 
   /**
-   * Gi penger til en eller flere elever (kun for lærer)
+   * Gi penger til en eller flere elever (kun for lærer, kun i eget klasserom)
    * @param {Array<string>|string} recipientIds - Mottaker ID(er)
    * @param {number} amount - Beløp per mottaker
    * @param {string} message - Melding
@@ -77,8 +121,16 @@ class TransactionService {
   async giveMoney(recipientIds, amount, message = 'Utbetaling fra banken') {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan gi penger');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanGiveMoney'));
+      }
+      
+      // Hent lærerens klasserom (bruk async for Firebase-støtte)
+      let classroom = await classroomService.getClassroomByTeacherAsync(currentUser.id);
+      
+      // Fallback: bruk currentUser.classroomId hvis classroom ikke finnes
+      if (!classroom && currentUser.classroomId) {
+        classroom = { id: currentUser.classroomId };
       }
       
       // Valider beløp
@@ -91,7 +143,7 @@ class TransactionService {
       const recipients = Array.isArray(recipientIds) ? recipientIds : [recipientIds];
       
       if (recipients.length === 0) {
-        throw new Error('Ingen mottakere valgt');
+        throw new Error(languageService.t('error.noRecipientsSelected'));
       }
       
       // Opprett transaksjoner for alle mottakere
@@ -104,11 +156,18 @@ class TransactionService {
             continue;
           }
           
+          // Sjekk at mottaker er i samme klasserom
+          if (classroom && recipient.classroomId !== classroom.id) {
+            console.warn(`Mottaker ${recipientId} er ikke i ditt klasserom, hopper over`);
+            continue;
+          }
+          
           const transaction = await dataService.createTransaction({
             senderId: currentUser.id,
             recipientId: recipient.id,
             amount: amountValidation.value,
-            message: message.trim()
+            message: message.trim(),
+            classroomId: classroom?.id // Legg til classroom ID
           });
           
           transactions.push(transaction);
@@ -134,7 +193,7 @@ class TransactionService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser) {
-        throw new Error('Du må være logget inn');
+        throw new Error(languageService.t('error.mustBeLoggedIn'));
       }
       
       let transactions = await dataService.getUserTransactions(currentUser.id);
@@ -151,18 +210,41 @@ class TransactionService {
   }
 
   /**
-   * Hent alle transaksjoner (kun for lærer)
+   * Hent alle transaksjoner i klasserommet (kun for lærer)
    * @param {number} limit - Max antall transaksjoner (0 = alle)
    * @returns {Promise<Array>} - Array av transaksjoner
    */
   async getAllTransactions(limit = 0) {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan se alle transaksjoner');
+      if (!currentUser || currentUser.type !== USER_TYPES.TEACHER) {
+        throw new Error(languageService.t('error.onlyTeachersCanViewAllTransactions'));
       }
       
+      // Hent lærerens klasserom
+      const classroom = classroomService.getClassroomByTeacher(currentUser.id);
+      const classroomId = classroom?.id || currentUser.classroomId || dataService.getCurrentClassroomIdSync?.();
+      
       let transactions = await dataService.getTransactions();
+      
+      // Filtrer på klasserom hvis det finnes
+      if (classroomId) {
+        // Hent alle brukere i klasserommet (inkluderer lærer/elev/bank-kontoer)
+        const classroomUsers = dataService.getUsersSync().filter(u => u.classroomId === classroomId);
+        const classroomUserIds = new Set(classroomUsers.map(u => u.id));
+        classroomUserIds.add(currentUser.id); // ekstra sikkerhet
+        
+        // Filtrer transaksjoner hvor sender eller mottaker er i klasserommet
+        transactions = transactions.filter(tx => 
+          classroomUserIds.has(tx.senderId) || classroomUserIds.has(tx.recipientId) ||
+          tx.classroomId === classroomId
+        );
+      } else {
+        // Hvis klasserom ikke kan fastslås: vis kun lærerens egne transaksjoner (ikke alle)
+        transactions = transactions.filter(tx =>
+          tx.senderId === currentUser.id || tx.recipientId === currentUser.id
+        );
+      }
       
       // Sorter etter tid (nyeste først)
       transactions.sort((a, b) => 
@@ -189,7 +271,7 @@ class TransactionService {
     try {
       const targetUserId = userId || authService.getCurrentUserId();
       if (!targetUserId) {
-        throw new Error('Bruker ID mangler');
+        throw new Error(languageService.t('error.userIdMissing'));
       }
       
       const transactions = await dataService.getUserTransactions(targetUserId);
@@ -216,6 +298,62 @@ class TransactionService {
     } catch (error) {
       console.error('Feil ved beregning av statistikk:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Hent alle transaksjoner for en spesifikk student
+   * @param {string} studentId - Student ID
+   * @returns {Promise<Array>} - Liste med transaksjoner
+   */
+  async getStudentTransactions(studentId) {
+    try {
+      const transactions = await dataService.getTransactions();
+      
+      // Filtrer transaksjoner hvor studenten er sender eller mottaker
+      return transactions.filter(tx => 
+        tx.senderId === studentId || 
+        tx.recipientId === studentId ||
+        tx.fromId === studentId ||
+        tx.toId === studentId
+      );
+    } catch (error) {
+      console.error('Feil ved henting av elevtransaksjoner:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Hent alle transaksjoner for klasserommet
+   * @returns {Promise<Array>} - Liste med transaksjoner
+   */
+  async getTransactions() {
+    try {
+      const currentUser = authService.getCurrentUser();
+      if (!currentUser) return [];
+      
+      let transactions = await dataService.getTransactions();
+      
+      // Filtrer på klasserom hvis læreren har et
+      if (currentUser.type === USER_TYPES.TEACHER) {
+        const classroom = classroomService.getClassroomByTeacher(currentUser.id);
+        if (classroom) {
+          const studentsInClassroom = classroomService.getStudentsByClassroom(classroom.id);
+          const studentIds = new Set(studentsInClassroom.map(s => s.id));
+          studentIds.add(currentUser.id);
+          
+          transactions = transactions.filter(tx => 
+            studentIds.has(tx.senderId) || studentIds.has(tx.recipientId) ||
+            studentIds.has(tx.fromId) || studentIds.has(tx.toId) ||
+            tx.classroomId === classroom.id
+          );
+        }
+      }
+      
+      return transactions;
+    } catch (error) {
+      console.error('Feil ved henting av transaksjoner:', error);
+      return [];
     }
   }
 }

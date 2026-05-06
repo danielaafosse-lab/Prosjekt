@@ -45,19 +45,23 @@ class UIManager {
    * @param {string} screenId - Screen ID
    */
   showScreen(screenId) {
-    // Skjul alle screens
+    // Skjul alle screens - sjekk både data-screen og id
     document.querySelectorAll('[data-screen]').forEach(screen => {
       screen.classList.add('hidden');
     });
 
-    // Vis valgt screen
-    const screen = document.querySelector(`[data-screen="${screenId}"]`);
+    // Vis valgt screen - prøv først data-screen, så id
+    let screen = document.querySelector(`[data-screen="${screenId}"]`);
+    if (!screen) {
+      screen = document.getElementById(screenId);
+    }
+    
     if (screen) {
       screen.classList.remove('hidden');
       this.currentScreen = screenId;
       eventBus.emit(EVENTS.SCREEN_CHANGED, screenId);
     } else {
-      console.error(`Screen "${screenId}" ikke funnet`);
+      console.warn(`Screen "${screenId}" ikke funnet (dette er normalt ved oppstart)`);
     }
   }
 

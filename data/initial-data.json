@@ -4,10 +4,11 @@
       "id": "t1",
       "username": "laerer",
       "password": "passord",
-      "name": "Lærer Bank",
+      "name": "Demo Lærer",
       "accountNumber": "100",
       "type": "teacher",
-      "balance": 0
+      "balance": 0,
+      "classroomId": "demo-classroom"
     },
     {
       "id": "s1",
@@ -16,7 +17,8 @@
       "name": "Kari Nordmann",
       "accountNumber": "101",
       "type": "student",
-      "balance": 1000
+      "balance": 1000,
+      "classroomId": "demo-classroom"
     },
     {
       "id": "s2",
@@ -25,7 +27,8 @@
       "name": "Ola Hansen",
       "accountNumber": "102",
       "type": "student",
-      "balance": 1000
+      "balance": 1000,
+      "classroomId": "demo-classroom"
     },
     {
       "id": "s3",
@@ -34,7 +37,8 @@
       "name": "Emma Larsen",
       "accountNumber": "103",
       "type": "student",
-      "balance": 1000
+      "balance": 1000,
+      "classroomId": "demo-classroom"
     }
   ],
   "jobs": [],

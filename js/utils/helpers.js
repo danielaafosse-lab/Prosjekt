@@ -18,6 +18,17 @@ export async function hashPassword(password) {
 }
 
 /**
+ * Verifiser passord mot hashet passord
+ * @param {string} password - Passord å verifisere
+ * @param {string} hash - Hashet passord å sammenligne med
+ * @returns {Promise<boolean>} - true hvis passord matcher
+ */
+export async function verifyPassword(password, hash) {
+  const hashedInput = await hashPassword(password);
+  return hashedInput === hash;
+}
+
+/**
  * Generer unik ID
  * @param {string} prefix - Prefix for ID
  * @returns {string} - Unik ID

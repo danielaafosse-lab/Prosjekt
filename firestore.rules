@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Tillat lesing og skriving for alle collections
+    // MERK: For produksjon bør dette strammes inn med autentisering
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

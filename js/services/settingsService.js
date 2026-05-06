@@ -6,6 +6,7 @@
 import { dataService } from '../core/dataService.js';
 import { authService } from '../core/auth.js';
 import { eventBus, EVENTS } from '../core/eventBus.js';
+import { languageService } from './languageService.js';
 import {
   validateClassName,
   validateCurrencyName,
@@ -20,13 +21,13 @@ class SettingsService {
 
   /**
    * Hent nåværende innstillinger
+   * Alltid hent ferske innstillinger for å sikre riktige klasserom-innstillinger
    * @returns {Promise<Object>} - Innstillinger
    */
   async getSettings() {
     try {
-      if (!this.currentSettings) {
-        this.currentSettings = await dataService.getSettings();
-      }
+      // Alltid hent ferske innstillinger for riktig klasserom (await for Firebase)
+      this.currentSettings = await dataService.getSettings();
       return this.currentSettings;
     } catch (error) {
       console.error('Feil ved henting av innstillinger:', error);
@@ -43,7 +44,7 @@ class SettingsService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan oppdatere innstillinger');
+        throw new Error(languageService.t('error.onlyTeachersCanUpdateSettings'));
       }
       
       // Valider relevante felt

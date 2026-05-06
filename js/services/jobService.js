@@ -7,6 +7,9 @@ import { dataService } from '../core/dataService.js';
 import { authService } from '../core/auth.js';
 import { eventBus, EVENTS } from '../core/eventBus.js';
 import { transactionService } from './transactionService.js';
+import { classroomService } from './classroomService.js';
+import { taxService } from './taxService.js';
+import { languageService } from './languageService.js';
 import { 
   validateJobTitle, 
   validateJobDescription, 
@@ -17,6 +20,14 @@ import { JOB_STATUS, JOB_TYPES, APPLICATION_STATUS } from '../config.js';
 
 class JobService {
   /**
+   * Hent classroomId for nåværende bruker (synkron fra cache)
+   * Bruker dataService for konsistent tilgang
+   */
+  getCurrentClassroomId() {
+    return dataService.getCurrentClassroomIdSync();
+  }
+
+  /**
    * Opprett ny jobb (kun lærer)
    * @param {Object} jobData - Jobb data
    * @returns {Promise<Object>} - Opprettet jobb
@@ -25,7 +36,13 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan opprette jobber');
+        throw new Error(languageService.t('error.onlyTeachersCanCreateJobs'));
+      }
+      
+      // Hent klasseroms-ID
+      const classroomId = this.getCurrentClassroomId();
+      if (!classroomId) {
+        throw new Error(languageService.t('error.needClassroomForJobs'));
       }
       
       // Valider input
@@ -45,10 +62,10 @@ class JobService {
       }
       
       if (!Object.values(JOB_TYPES).includes(jobData.type)) {
-        throw new Error('Ugyldig jobbtype');
+        throw new Error(languageService.t('error.invalidJobType'));
       }
       
-      // Opprett jobb
+      // Opprett jobb med classroomId
       const job = await dataService.createJob({
         title: jobData.title.trim(),
         description: jobData.description?.trim() || '',
@@ -56,7 +73,9 @@ class JobService {
         type: jobData.type,
         status: jobData.status || JOB_STATUS.ACTIVE,
         assignedTo: jobData.assignedTo || null,
-        postedBy: currentUser.id
+        postedBy: currentUser.id,
+        classroomId: classroomId, // Viktig: Koble til klasserom
+        isDirectOffer: jobData.isDirectOffer || false // For å skjule fra åpne stillinger
       });
       
       console.log('✅ Jobb opprettet i jobService:', job);
@@ -78,7 +97,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan oppdatere jobber');
+        throw new Error(languageService.t('error.onlyTeachersCanUpdateJobs'));
       }
       
       // Valider relevante felt hvis de oppdateres
@@ -118,7 +137,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan slette jobber');
+        throw new Error(languageService.t('error.onlyTeachersCanDeleteJobs'));
       }
       
       await dataService.deleteJob(jobId);
@@ -131,20 +150,26 @@ class JobService {
   }
 
   /**
-   * Hent alle jobber (generell metode)
+   * Hent alle jobber i nåværende klasserom
    * @returns {Promise<Array>} - Array av jobber med brukerinfo
    */
   async getJobs() {
     try {
+      const classroomId = this.getCurrentClassroomId();
       const jobs = await dataService.getJobs();
       
+      // Filtrer på klasserom
+      const classroomJobs = classroomId 
+        ? jobs.filter(j => j.classroomId === classroomId)
+        : [];
+      
       // Legg til brukernavn for tildelte jobber
-      const jobsWithUserInfo = await Promise.all(jobs.map(async (job) => {
+      const jobsWithUserInfo = await Promise.all(classroomJobs.map(async (job) => {
         if (job.assignedTo) {
           const user = await dataService.getUser(job.assignedTo);
           return {
             ...job,
-            assignedToName: user ? user.name : 'Ukjent bruker'
+            assignedToName: user ? user.name : languageService.t('error.unknownUser')
           };
         }
         return job;
@@ -158,14 +183,16 @@ class JobService {
   }
 
   /**
-   * Hent alle åpne jobber
+   * Hent alle åpne jobber i nåværende klasserom
    * @returns {Promise<Array>} - Array av jobber
    */
   async getOpenJobs() {
     try {
+      const classroomId = this.getCurrentClassroomId();
       const jobs = await dataService.getJobs();
+      
       return jobs
-        .filter(j => j.status === JOB_STATUS.ACTIVE && !j.assignedTo)
+        .filter(j => j.classroomId === classroomId && j.status === JOB_STATUS.ACTIVE && !j.assignedTo)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     } catch (error) {
       console.error('Feil ved henting av åpne jobber:', error);
@@ -174,18 +201,20 @@ class JobService {
   }
 
   /**
-   * Hent alle tildelte jobber (kun lærer)
+   * Hent alle tildelte jobber i nåværende klasserom (kun lærer)
    * @returns {Promise<Array>} - Array av jobber
    */
   async getAssignedJobs() {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan se tildelte jobber');
+        throw new Error(languageService.t('error.onlyTeachersCanViewAssigned'));
       }
       
+      const classroomId = this.getCurrentClassroomId();
       const jobs = await dataService.getJobs();
-      return jobs.filter(j => j.status === JOB_STATUS.ASSIGNED);
+      
+      return jobs.filter(j => j.classroomId === classroomId && j.status === JOB_STATUS.ASSIGNED);
     } catch (error) {
       console.error('Feil ved henting av tildelte jobber:', error);
       throw error;
@@ -193,14 +222,16 @@ class JobService {
   }
 
   /**
-   * Hent fullførte jobber
+   * Hent fullførte jobber i nåværende klasserom
    * @returns {Promise<Array>} - Array av jobber
    */
   async getCompletedJobs() {
     try {
+      const classroomId = this.getCurrentClassroomId();
       const jobs = await dataService.getJobs();
+      
       return jobs
-        .filter(j => j.status === JOB_STATUS.COMPLETED)
+        .filter(j => j.classroomId === classroomId && j.status === JOB_STATUS.COMPLETED)
         .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
     } catch (error) {
       console.error('Feil ved henting av fullførte jobber:', error);
@@ -216,7 +247,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser) {
-        throw new Error('Du må være logget inn');
+        throw new Error(languageService.t('error.mustBeLoggedIn'));
       }
       
       const jobs = await dataService.getJobs();
@@ -238,7 +269,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser) {
-        throw new Error('Du må være logget inn');
+        throw new Error(languageService.t('error.mustBeLoggedIn'));
       }
       
       const jobs = await dataService.getJobs();
@@ -266,7 +297,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'student') {
-        throw new Error('Kun elever kan søke på jobber');
+        throw new Error(languageService.t('error.onlyStudentsCanApply'));
       }
       
       // Valider søknadstekst
@@ -278,14 +309,14 @@ class JobService {
       // Sjekk at jobben finnes og er åpen
       const job = await dataService.getJob(jobId);
       if (!job) {
-        throw new Error('Jobb ikke funnet');
+        throw new Error(languageService.t('error.jobNotFound'));
       }
       if (job.status !== JOB_STATUS.ACTIVE || job.assignedTo) {
-        throw new Error('Denne jobben er ikke lenger åpen');
+        throw new Error(languageService.t('error.jobNoLongerOpen'));
       }
       
       // Sjekk om eleven allerede har søkt (for oppdatering)
-      const allApplications = dataService._getFromStorage('econsim_applications') || [];
+      const allApplications = await dataService.getApplications();
       const existingApplication = allApplications.find(
         app => app.jobId === jobId && app.applicantId === currentUser.id
       );
@@ -324,7 +355,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan se søknader');
+        throw new Error(languageService.t('error.onlyTeachersCanViewApplications'));
       }
       
       return await dataService.getJobApplications(jobId);
@@ -342,7 +373,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan se søknader');
+        throw new Error(languageService.t('error.onlyTeachersCanViewApplications'));
       }
       
       const applications = await dataService.getApplications();
@@ -394,7 +425,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan godkjenne søknader');
+        throw new Error(languageService.t('error.onlyTeachersCanApprove'));
       }
       
       // Hent søknad
@@ -402,11 +433,11 @@ class JobService {
       const application = applications.find(a => a.id === applicationId);
       
       if (!application) {
-        throw new Error('Søknad ikke funnet');
+        throw new Error(languageService.t('error.applicationNotFound'));
       }
       
       if (application.status !== APPLICATION_STATUS.PENDING) {
-        throw new Error('Søknad er allerede behandlet');
+        throw new Error(languageService.t('error.applicationAlreadyProcessed'));
       }
       
       // Oppdater jobb
@@ -455,7 +486,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan avvise søknader');
+        throw new Error(languageService.t('error.onlyTeachersCanReject'));
       }
       
       await dataService.updateApplication(applicationId, {
@@ -480,21 +511,21 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan ansette elever');
+        throw new Error(languageService.t('error.onlyTeachersCanHire'));
       }
 
       const job = await dataService.getJob(jobId);
       if (!job) {
-        throw new Error('Jobb ikke funnet');
+        throw new Error(languageService.t('error.jobNotFound'));
       }
 
       if (job.assignedTo) {
-        throw new Error('Jobben er allerede tildelt');
+        throw new Error(languageService.t('error.jobAlreadyAssigned'));
       }
 
       const student = await dataService.getUser(studentId);
       if (!student || student.type !== 'student') {
-        throw new Error('Ugyldig elev');
+        throw new Error(languageService.t('error.invalidStudent'));
       }
 
       const updatedJob = await dataService.updateJob(jobId, {
@@ -515,30 +546,43 @@ class JobService {
 
   /**
    * Betal lønn for en jobb (kun lærer)
+   * Trekker automatisk skatt hvis skattesystemet er aktivert
    * @param {string} jobId - Jobb ID
-   * @returns {Promise<Object>} - { transaction, job }
+   * @returns {Promise<Object>} - { transaction, job, taxInfo }
    */
   async payJobSalary(jobId) {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan betale lønn');
+        throw new Error(languageService.t('error.onlyTeachersCanPaySalary'));
       }
       
       const job = await dataService.getJob(jobId);
       if (!job) {
-        throw new Error('Jobb ikke funnet');
+        throw new Error(languageService.t('error.jobNotFound'));
       }
       
       if (job.status !== JOB_STATUS.ACTIVE || !job.assignedTo) {
-        throw new Error('Jobb er ikke tildelt');
+        throw new Error(languageService.t('error.jobNotAssigned'));
       }
       
-      // Overfør penger
+      // Beregn skatt hvis aktivert
+      let netSalary = job.salary;
+      let taxInfo = null;
+      
+      if (await taxService.isEnabled()) {
+        taxInfo = await taxService.witholdTax(job.assignedTo, job.salary, `Lønn for: ${job.title}`);
+        netSalary = taxInfo.netAmount;
+        console.log(`💰 Lønn: ${job.salary} - Skatt: ${taxInfo.taxAmount} = Netto: ${netSalary}`);
+      }
+      
+      // Overfør netto penger til eleven
       const transaction = await transactionService.giveMoney(
         job.assignedTo,
-        job.salary,
-        `Lønn for: ${job.title}`
+        netSalary,
+        taxInfo 
+          ? `Lønn for: ${job.title} (etter ${taxInfo.taxAmount} i skatt)`
+          : `Lønn for: ${job.title}`
       );
       
       // Oppdater jobb basert på type
@@ -559,7 +603,8 @@ class JobService {
       
       return {
         transaction: transaction[0], // giveMoney returnerer array
-        job: updatedJob
+        job: updatedJob,
+        taxInfo
       };
     } catch (error) {
       console.error('Feil ved lønnsutbetaling:', error);
@@ -575,13 +620,13 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan betale lønn');
+        throw new Error(languageService.t('error.onlyTeachersCanPaySalary'));
       }
       
       const activeJobs = await this.getAssignedJobs();
       
       if (activeJobs.length === 0) {
-        return { successful: [], failed: [], message: 'Ingen aktive jobber å betale' };
+        return { successful: [], failed: [], message: languageService.t('jobs.noActiveJobsToPayFor') };
       }
       
       const successful = [];
@@ -613,7 +658,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan avslutte jobber');
+        throw new Error(languageService.t('error.onlyTeachersCanEndJobs'));
       }
       
       const job = await dataService.updateJob(jobId, {
@@ -638,7 +683,7 @@ class JobService {
     try {
       const currentUser = authService.getCurrentUser();
       if (!currentUser || currentUser.type !== 'teacher') {
-        throw new Error('Kun lærere kan publisere jobber på nytt');
+        throw new Error(languageService.t('error.onlyTeachersCanRepublish'));
       }
       
       const job = await dataService.updateJob(jobId, {

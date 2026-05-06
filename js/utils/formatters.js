@@ -3,6 +3,8 @@
  * Formatteringsfunksjoner for å vise data pent
  */
 
+import languageService from '../services/languageService.js';
+
 /**
  * Formater valuta
  * @param {number} amount - Beløp
@@ -66,10 +68,10 @@ export function formatRelativeTime(date) {
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);
   
-  if (diffSec < 60) return 'nettopp';
-  if (diffMin < 60) return `for ${diffMin} ${diffMin === 1 ? 'minutt' : 'minutter'} siden`;
-  if (diffHour < 24) return `for ${diffHour} ${diffHour === 1 ? 'time' : 'timer'} siden`;
-  if (diffDay < 7) return `for ${diffDay} ${diffDay === 1 ? 'dag' : 'dager'} siden`;
+  if (diffSec < 60) return languageService.t('time.justNow');
+  if (diffMin < 60) return languageService.t(diffMin === 1 ? 'time.minuteAgo' : 'time.minutesAgo', { n: diffMin });
+  if (diffHour < 24) return languageService.t(diffHour === 1 ? 'time.hourAgo' : 'time.hoursAgo', { n: diffHour });
+  if (diffDay < 7) return languageService.t(diffDay === 1 ? 'time.dayAgo' : 'time.daysAgo', { n: diffDay });
   
   return formatDate(d);
 }
@@ -96,9 +98,9 @@ export function formatTransactionMessage(transaction, currentUserId) {
   
   let prefix = '';
   if (isSender) {
-    prefix = `Sendt til ${transaction.recipientName}`;
+    prefix = languageService.t('transaction.sentTo', { name: transaction.recipientName });
   } else if (isRecipient) {
-    prefix = `Mottatt fra ${transaction.senderName}`;
+    prefix = languageService.t('transaction.receivedFrom', { name: transaction.senderName });
   }
   
   const message = transaction.message ? `: ${transaction.message}` : '';
@@ -106,42 +108,42 @@ export function formatTransactionMessage(transaction, currentUserId) {
 }
 
 /**
- * Formater jobbstatus til norsk
+ * Formater jobbstatus til oversatt tekst
  * @param {string} status - Status
- * @returns {string} - Norsk status
+ * @returns {string} - Oversatt status
  */
 export function formatJobStatus(status) {
   const statusMap = {
-    'open': 'Åpen',
-    'assigned': 'Tildelt',
-    'completed': 'Fullført'
+    'open': languageService.t('jobStatus.open'),
+    'assigned': languageService.t('jobStatus.assigned'),
+    'completed': languageService.t('jobStatus.completed')
   };
   return statusMap[status] || status;
 }
 
 /**
- * Formater jobbtype til norsk
+ * Formater jobbtype til oversatt tekst
  * @param {string} type - Type
- * @returns {string} - Norsk type
+ * @returns {string} - Oversatt type
  */
 export function formatJobType(type) {
   const typeMap = {
-    'fixed': 'Fast jobb',
-    'project': 'Prosjekt'
+    'fixed': languageService.t('jobType.fixed'),
+    'project': languageService.t('jobType.project')
   };
   return typeMap[type] || type;
 }
 
 /**
- * Formater søknadsstatus til norsk
+ * Formater søknadsstatus til oversatt tekst
  * @param {string} status - Status
- * @returns {string} - Norsk status
+ * @returns {string} - Oversatt status
  */
 export function formatApplicationStatus(status) {
   const statusMap = {
-    'pending': 'Venter',
-    'accepted': 'Godkjent',
-    'rejected': 'Avvist'
+    'pending': languageService.t('applicationStatus.pending'),
+    'accepted': languageService.t('applicationStatus.accepted'),
+    'rejected': languageService.t('applicationStatus.rejected')
   };
   return statusMap[status] || status;
 }
@@ -196,4 +198,114 @@ export function formatInitials(name) {
   if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
   
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * Oversett transaksjonsbeskrivelse basert på kjente mønstre
+ * Støtter både norsk->engelsk og engelsk->norsk
+ * @param {string} description - Opprinnelig beskrivelse
+ * @returns {string} - Oversatt beskrivelse
+ */
+export function translateTransactionDescription(description) {
+  if (!description) return '';
+  
+  // Mapping av norske beskrivelser til oversettelsesnøkler
+  const descriptionMappings = [
+    // Sparekonto/fondskonto
+    { pattern: /^Overført til sparekonto$/i, key: 'transaction.transferredToSavings' },
+    { pattern: /^Overført fra sparekonto$/i, key: 'transaction.transferredFromSavings' },
+    { pattern: /^Overført til fondskonto$/i, key: 'transaction.transferredToFund' },
+    { pattern: /^Overført fra fondskonto$/i, key: 'transaction.transferredFromFund' },
+    
+    // Lån
+    { pattern: /^Lån mottatt \((.+)\)$/i, key: 'transaction.loanReceived', suffix: true },
+    { pattern: /^Låneavdrag \((.+)\)$/i, key: 'transaction.loanPayment', suffix: true },
+    { pattern: /^Ekstra innbetaling på lån \((.+)\)$/i, key: 'transaction.extraLoanPayment', suffix: true },
+    { pattern: /^Delvis låneavdrag \((.+)\) - Manglet (.+)$/i, key: 'transaction.partialLoanPayment', partialLoan: true },
+    
+    // Lønn
+    { pattern: /^Lønn fra (.+)$/i, key: 'transaction.salaryFrom', dynamic: true },
+    { pattern: /^Lønn til (.+)$/i, key: 'transaction.salaryTo', dynamic: true },
+    { pattern: /^Siste lønn fra (.+) \(stengt\)$/i, key: 'transaction.finalSalaryFromClosed', dynamicClosed: true },
+    { pattern: /^Siste lønn fra (.+)$/i, key: 'transaction.finalSalaryFrom', dynamic: true },
+    
+    // Egenkapital og bedrift
+    { pattern: /^Egenkapital fra grunnlegger$/i, key: 'transaction.equityFromFounder' },
+    { pattern: /^Egenkapital: (.+)$/i, key: 'transaction.equity', dynamic: true, separator: ': ' },
+    { pattern: /^Kapitalinnskudd$/i, key: 'transaction.capitalDeposit' },
+    { pattern: /^Overføring til (.+)$/i, key: 'transaction.transferTo', dynamic: true },
+    
+    // Uttak
+    { pattern: /^Uttak$/i, key: 'transaction.withdrawal' },
+    { pattern: /^Uttak fra (.+)( \(etter .+ i Utbytteskatt\))?$/i, key: 'transaction.withdrawalFrom', dynamic: true },
+    
+    // Skatt og utbytte
+    { pattern: /^Skattetrekk: (.+)$/i, key: 'transaction.taxDeduction', dynamic: true, separator: ': ' },
+    { pattern: /^Utbytteskatt fra (.+) \((.+)\)$/i, key: 'transaction.dividendTaxFrom', dividendTax: true },
+    { pattern: /^Utbytte fra nedleggelse av (.+)$/i, key: 'transaction.dividendFromClosure', dynamic: true },
+    
+    // Aksjer
+    { pattern: /^Kjøp av (.+)% andel i (.+)$/i, key: 'transaction.purchaseOfShareIn', shareTransaction: true },
+    { pattern: /^Salg av (.+)% eierandel$/i, key: 'transaction.saleOfShareOwnership', dynamic: true },
+    { pattern: /^Salg av (.+)% andel i (.+)$/i, key: 'transaction.saleOfShareIn', shareTransaction: true },
+    
+    // Refusjon
+    { pattern: /^Refundert - bedrift avvist - (.+)$/i, key: 'transaction.refundedBusinessRejected', dynamic: true, separator: ' - ' },
+    
+    // Engelske versjoner
+    { pattern: /^Transferred to savings account$/i, key: 'transaction.transferredToSavings' },
+    { pattern: /^Transferred from savings account$/i, key: 'transaction.transferredFromSavings' },
+    { pattern: /^Transferred to fund account$/i, key: 'transaction.transferredToFund' },
+    { pattern: /^Transferred from fund account$/i, key: 'transaction.transferredFromFund' },
+    { pattern: /^Loan received \((.+)\)$/i, key: 'transaction.loanReceived', suffix: true },
+    { pattern: /^Loan payment \((.+)\)$/i, key: 'transaction.loanPayment', suffix: true },
+    { pattern: /^Extra loan payment \((.+)\)$/i, key: 'transaction.extraLoanPayment', suffix: true },
+    { pattern: /^Partial loan payment \((.+)\) - Lacked (.+)$/i, key: 'transaction.partialLoanPayment', partialLoan: true },
+    { pattern: /^Salary from (.+)$/i, key: 'transaction.salaryFrom', dynamic: true },
+    { pattern: /^Salary to (.+)$/i, key: 'transaction.salaryTo', dynamic: true },
+    { pattern: /^Final salary from (.+) \(closed\)$/i, key: 'transaction.finalSalaryFromClosed', dynamicClosed: true },
+    { pattern: /^Final salary from (.+)$/i, key: 'transaction.finalSalaryFrom', dynamic: true },
+    { pattern: /^Equity from founder$/i, key: 'transaction.equityFromFounder' },
+    { pattern: /^Equity: (.+)$/i, key: 'transaction.equity', dynamic: true, separator: ': ' },
+    { pattern: /^Capital deposit$/i, key: 'transaction.capitalDeposit' },
+    { pattern: /^Transfer to (.+)$/i, key: 'transaction.transferTo', dynamic: true },
+    { pattern: /^Withdrawal$/i, key: 'transaction.withdrawal' },
+    { pattern: /^Withdrawal from (.+)$/i, key: 'transaction.withdrawalFrom', dynamic: true },
+    { pattern: /^Tax deduction: (.+)$/i, key: 'transaction.taxDeduction', dynamic: true, separator: ': ' },
+    { pattern: /^Dividend tax from (.+) \((.+)\)$/i, key: 'transaction.dividendTaxFrom', dividendTax: true },
+    { pattern: /^Dividend from closure of (.+)$/i, key: 'transaction.dividendFromClosure', dynamic: true },
+    { pattern: /^Purchase of (.+)% share in (.+)$/i, key: 'transaction.purchaseOfShareIn', shareTransaction: true },
+    { pattern: /^Sale of (.+)% ownership$/i, key: 'transaction.saleOfShareOwnership', dynamic: true },
+    { pattern: /^Sale of (.+)% share in (.+)$/i, key: 'transaction.saleOfShareIn', shareTransaction: true },
+    { pattern: /^Refunded - business rejected - (.+)$/i, key: 'transaction.refundedBusinessRejected', dynamic: true, separator: ' - ' },
+  ];
+  
+  for (const mapping of descriptionMappings) {
+    const match = description.match(mapping.pattern);
+    if (match) {
+      if (mapping.suffix && match[1]) {
+        return `${languageService.t(mapping.key)} (${match[1]})`;
+      }
+      if (mapping.partialLoan && match[1] && match[2]) {
+        return `${languageService.t(mapping.key)} (${match[1]}) - ${languageService.t('transaction.lacked')} ${match[2]}`;
+      }
+      if (mapping.dividendTax && match[1] && match[2]) {
+        return `${languageService.t(mapping.key)} ${match[1]} (${match[2]})`;
+      }
+      if (mapping.shareTransaction && match[1] && match[2]) {
+        return `${languageService.t(mapping.key)} ${match[1]}% ${languageService.t('transaction.shareIn')} ${match[2]}`;
+      }
+      if (mapping.dynamicClosed && match[1]) {
+        return `${languageService.t(mapping.key)} ${match[1]} (${languageService.t('transaction.closed')})`;
+      }
+      if (mapping.dynamic && match[1]) {
+        const separator = mapping.separator || ' ';
+        return `${languageService.t(mapping.key)}${separator}${match[1]}`;
+      }
+      return languageService.t(mapping.key);
+    }
+  }
+  
+  // Ingen match - returner original beskrivelse
+  return description;
 }
