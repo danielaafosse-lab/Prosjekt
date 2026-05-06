@@ -1,12 +1,45 @@
 # EconSim — Prosjektguide for Claude
 
-## Hva er EconSim?
+Norsk klasseromsøkonomisimulator for ungdomsskolen (7.–10. klasse). Lærer oppretter virtuelt klasserom med egen valuta (`KlasseKrone` / `KKr`); elever deltar i en simulert økonomi med jobber, sparing, fond, lån, skatt og bedrifter.
 
-EconSim er en norsk klasseromsøkonomisimulator for elever i 7.–10. klasse (13–16 år). Læreren oppretter et virtuelt klasserom med sin egen valuta (standard: KlasseKrone / KKr), og elevene deltar i en simulert økonomi med jobber, sparing, fond, lån, skatt og bedrifter.
+- **Live URL:** https://econsim-5723c.web.app
+- **Firebase-prosjekt:** `econsim-5723c`
+- **Gjeldende versjon:** 5.2.1 (mars 2026)
+- **Pågående arbeid:** v6.0 — total restrukturering på branch `refactor/v6-restructure`. Se [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md) for full spec.
 
-**Live URL:** https://econsim-5723c.web.app  
-**Gjeldende versjon:** 5.2 (mars 2026)  
-**Firebase-prosjekt:** `econsim-5723c`
+For full systembeskrivelse, les [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) først (~10 min lesetid). Denne filen er en kort guide for hvordan AI skal jobbe i dette prosjektet.
+
+---
+
+## Status for v6-restrukturering
+
+Vi migrerer fra organisk vokst monolitt (`main.js` 12k linjer, `index.html` 3k linjer) til feature-basert arkitektur. Migrering skjer i faser; appen skal fungere etter hver fase.
+
+| Fase | Status |
+|------|--------|
+| 0 — Branch og sikkerhetsnett | I gang |
+| 1 — Død kod, CSS-konsolidering, dokumentsplitting | Pågår |
+| 2 — Verktøy (ESLint, Prettier, Vitest, JSDoc) | Ikke startet |
+| 3 — Data-lag forenkling | Ikke startet |
+| 4 — Splitt `index.html` til templates | Ikke startet |
+| 5 — Splitt `main.js` til features | Ikke startet |
+| 6 — Ytelse (batch writes, scheduler-parallell, shards) | Ikke startet |
+| 7 — JSDoc-typer og Vitest-tester | Ikke startet |
+| 8 — Cutover til v6 | Ikke startet |
+
+**Mål-arkitektur** (etter v6):
+
+```
+js/
+├── features/      # Domeneorientert: én mappe = ett konsept (savings, jobs, taxes, ...)
+├── shared/        # Plattform: data, UI, utils, typer
+└── app/           # Sammenkobling: bootstrap, routing, templateLoader
+```
+
+Avhengighetsregler (vil håndheves av ESLint i fase 2):
+- `features/X/services/` kan importere `shared/*` og andre features' services (atomiske transaksjoner)
+- `features/X/controllers/` kan IKKE importere andre features' controllers (cross-feature UI går via `eventBus`)
+- `shared/*` har ingen avhengigheter til features
 
 ---
 
@@ -15,128 +48,132 @@ EconSim er en norsk klasseromsøkonomisimulator for elever i 7.–10. klasse (13
 | Komponent | Teknologi |
 |-----------|-----------|
 | Frontend | HTML5 + ES6 Modules |
-| CSS | Tailwind CSS — **kompilert til `css/output.css`** (ikke CDN) |
-| Database | Firebase Firestore |
+| CSS | Tailwind CSS — **kompilert fra `src/input.css` til `css/output.css`** |
+| Database | Firebase Firestore (compat SDK via CDN) |
 | Hosting | Firebase Hosting |
-| Bakgrunnsjobber | Firebase Cloud Functions (ukentlig + månedlig scheduler) |
-| Autentisering | Egenutviklet (SHA-256 passord-hash, ingen Firebase Auth) |
+| Bakgrunnsjobber | Firebase Cloud Functions (ukentlig + månedlig) |
+| Autentisering | Egenutviklet (SHA-256 passord-hash) |
 | E-post | EmailJS (passordgjenoppretting) |
 
 ### Viktig om Tailwind
 
-CSS er kompilert én gang til `css/output.css`. **Klasser som ikke finnes i filen vil ikke virke.** Bruk aldri nye Tailwind-klasser uten å verifisere at de er i output.css. Bekreftet tilgjengelig: `hover:bg-gray-200`. **Ikke tilgjengelig:** `hover:bg-gray-100`. For farger/gradienter som ikke finnes, bruk inline `style=` attributt.
+CSS er kompilert til `css/output.css` ved hjelp av `npm run build:css`. **Klasser som ikke finnes i kompilert fil vil ikke virke.** Verifiser med Grep i `css/output.css` før du bruker en ny klasse. For farger/gradienter som ikke er kompilert, bruk inline `style=`.
+
+Bekreftet tilgjengelig: `hover:bg-gray-200`. Ikke tilgjengelig: `hover:bg-gray-100`.
+
+Etter endring av Tailwind-klasser i HTML eller JS, kjør `npm run build:css`.
 
 ---
 
-## Filstruktur
+## Gjeldende filstruktur (pre-v6)
 
 ```
 /Prosjekt
-├── index.html                    # Hele frontend-applikasjonen (monolittisk)
+├── index.html                    # Hele frontend (3k+ linjer — splittes i fase 4)
 ├── CLAUDE.md                     # Denne filen
-├── MANIFEST.md                   # Fullstendig endringslogg per versjon
-├── START.md                      # Hurtigstart (noe utdatert — viser localStorage-tid)
+├── README.md                     # Prosjekt-intro
+├── CHANGELOG.md                  # Versjonshistorikk (Keep a Changelog format)
 ├── firebase.json                 # Firebase Hosting + Functions-konfig
 ├── firestore.rules               # Firestore sikkerheetsregler
-├── package.json                  # npm-avhengigheter
+├── package.json
+│
+├── docs/
+│   ├── ARCHITECTURE.md           # Systemreferanse (les denne først)
+│   ├── DEVELOPMENT.md            # Lokal utvikling
+│   ├── DEPLOYMENT.md             # Deploy-guide
+│   ├── BRUKSANVISNING.md         # Sluttbrukerguide (lærer/elev)
+│   └── superpowers/specs/        # v6 design-spec
+│
+├── src/
+│   └── input.css                 # Tailwind-kilde (direktiver + custom CSS)
 │
 ├── css/
-│   ├── styles.css                # Kildefil (Tailwind directives + custom CSS)
-│   └── output.css                # Kompilert CSS — DETTE er det som brukes
+│   └── output.css                # Kompilert (DETTE er det som lastes)
 │
 ├── data/
 │   └── initial-data.json         # Startdata for demo-klasserom
 │
 ├── functions/                    # Firebase Cloud Functions
-│   └── index.js                  # Ukentlig/månedlig scheduler-trigger
+│   └── index.js
 │
-├── js/
-│   ├── config.js                 # Alle konstanter, standardverdier, kontostatus-enums
-│   ├── main.js                   # App-kontroller — alt starter og koordineres her
-│   │
-│   ├── core/
-│   │   ├── auth.js               # Innlogging, utlogging, sesjonshåndtering
-│   │   ├── dataService.js        # Abstraksjons-lag (delegerer til Firebase)
-│   │   ├── dataService.firebase.js  # Firebase-implementasjon av dataService
-│   │   ├── dataService.localStorage.js  # Gammel localStorage-impl (beholdt som fallback)
-│   │   ├── firebaseService.js    # Rå Firebase Firestore CRUD-operasjoner
-│   │   └── eventBus.js           # Pub/sub for løs kobling mellom moduler
-│   │
-│   ├── services/
-│   │   ├── businessService.js    # Bedrifter: opprett, ansett, utbytte, eierandeler
-│   │   ├── classroomService.js   # Klasseromshåndtering, multi-tenant
-│   │   ├── emailService.js       # EmailJS passordgjenoppretting
-│   │   ├── jobService.js         # Jobber: opprett, søk, godkjenn, lønnsutbetaling
-│   │   ├── languageService.js    # i18n: norsk/engelsk oversettelser
-│   │   ├── loanService.js        # Lån: opprett, rentebetaling, mislighold
-│   │   ├── notificationService.js # Varsler og meldinger (elev + lærer inbox)
-│   │   ├── savingsService.js     # Sparing + fond: innskudd, uttak, renteberegning
-│   │   ├── schedulerService.js   # Ukentlig/månedlig prosessering
-│   │   ├── settingsService.js    # Klasseromsinnstillinger (skatt, lån, bedrifter osv.)
-│   │   ├── statsService.js       # Statistikk og aktivitetslogg
-│   │   ├── taxService.js         # Skatt: flat og progressiv, fradrag, utbytteskatt
-│   │   ├── transactionService.js # Overføringer mellom kontoer
-│   │   └── userService.js        # Brukeradministrasjon (opprett, endre, slett)
-│   │
-│   ├── ui/
-│   │   └── uiManager.js          # Felles UI-funksjoner: showSuccess/Error, modaler, skjermbytte
-│   │
-│   └── utils/
-│       ├── formatters.js         # Tall- og datofomatering (KKr, NOK, datoer)
-│       ├── helpers.js            # Diverse hjelpefunksjoner
-│       └── validators.js         # Input-validering
+└── js/
+    ├── config.js                 # Konstanter, kontostatus-enums
+    ├── main.js                   # 12k+ linjer — splittes i fase 5
+    │
+    ├── core/
+    │   ├── auth.js
+    │   ├── dataService.js                # Tynt passthrough — fjernes i fase 3
+    │   ├── dataService.firebase.js       # Slås sammen med firebaseService i fase 3
+    │   ├── firebaseService.js            # Splittes til shared/core/firebase/* i fase 3
+    │   └── eventBus.js
+    │
+    ├── services/                 # Forretningslogikk per domene
+    │   ├── businessService.js
+    │   ├── classroomService.js
+    │   ├── emailService.js
+    │   ├── jobService.js
+    │   ├── languageService.js
+    │   ├── loanService.js
+    │   ├── notificationService.js
+    │   ├── savingsService.js
+    │   ├── schedulerService.js
+    │   ├── settingsService.js
+    │   ├── statsService.js
+    │   ├── taxService.js
+    │   ├── transactionService.js
+    │   └── userService.js
+    │
+    ├── ui/
+    │   └── uiManager.js          # Modaler, toasts, skjermbytte
+    │
+    └── utils/
+        ├── formatters.js
+        ├── helpers.js
+        └── validators.js
 ```
 
 ---
 
-## Kontostruktur
+## Kjernekonsepter (kortform — full beskrivelse i ARCHITECTURE.md)
 
-Alle kontoer identifiseres med 3-sifret kontonummer per klasserom:
+### Kontostruktur
 
-| Range | Type | Beskrivelse |
-|-------|------|-------------|
-| `000` | Sentralbank | Utømmelig kilde — fra sentralbanken |
-| `001` | Skattekasse | Samler inn skatteinnbetalinger |
-| `101–199` | Elevkontoer | Sjekk/brukskonto per elev |
-| `201–299` | Sparekontoer | Elev X på 1XX → sparekonto på 2XX |
-| `301–399` | Fondskontoer | Elev X på 1XX → fondskonto på 3XX |
-| `501–999` | Bedriftskontoer | Maks 499 bedrifter per klasserom |
+Tre-sifret kontonummer per klasserom:
+- `000` Sentralbank (utømmelig kilde)
+- `001` Skattekasse
+- `101–199` Elev-sjekk-kontoer
+- `201–299` Sparekontoer (parres med 1XX)
+- `301–399` Fondskontoer (parres med 1XX)
+- `501–999` Bedriftskontoer
 
----
+### Brukertyper
 
-## Brukertyper
+`superadmin` (DanielAlexander), `teacher`, `student`.
 
-| Type | Tilgang |
-|------|---------|
-| `superadmin` | Ser alle klasserom, kan opprette lærere. Brukernavn: `DanielAlexander` |
-| `teacher` | Administrerer eget klasserom: jobber, betalinger, innstillinger |
-| `student` | Ser eget dashboard: saldo, jobber, sparing, lån, bedrifter |
+### Tidsmodell
 
----
-
-## Viktige systemer
-
-### Tidsmodell (accelerated)
-1 uke i appen = 1 måned i virkeligheten. Renter og avkastning beregnes ut fra dette.
-- Sparerente: 2% per år → `annualRate / 12` per uke
-- Fondsavkastning: 8% per år ± 3% variasjon, beregnet kvartalsvis
-- Scheduler kjøres ukentlig via Cloud Functions
+1 uke i appen = 1 måned virkelig. Sparerente 2 % årlig (`/12` per uke). Fondsavkastning 8 % ± 3 % kvartalsvis. Scheduler ukentlig via Cloud Functions.
 
 ### Skattesystem
-To modi: **flat** (én prosentsats) og **progressiv** (trinnvis):
-- Trinn 1: 0–500 KKr = 0%
-- Trinn 2: 501–1500 KKr = 25%
-- Trinn 3: 1500+ KKr = 35%
-Fradragsgrense: 500 KKr. Utbytteskatt: 22%.
 
-### Sparerente-beregning
-Bruk `Math.round` (ikke `Math.floor`) for å unngå at lave saldoer aldri får rente:
+Flat eller progressiv:
+- 0–500 KKr: 0 %
+- 501–1500 KKr: 25 %
+- 1500+ KKr: 35 %
+- Fradragsgrense: 500 KKr
+- Utbytteskatt: 22 %
+
+### Sparerente-formel
+
 ```javascript
 const interest = Math.round(account.balance * periodRate);
 ```
+**Bruk `Math.round`, ikke `Math.floor`** — ellers får lave saldoer aldri rente.
 
-### Async-mønstre
-Alle overføringsfunksjoner (deposit/withdraw til sparing og fond) **må** awaite display-refresh:
+### Async-mønster
+
+Alle data-endringer kreves awaitet, inkludert refresh:
+
 ```javascript
 await savingsService.depositToSavings(user.id, amount);
 await authService.refreshCurrentUser();
@@ -144,29 +181,20 @@ await this.loadStudentSavings();
 await this.updateBalanceDisplay();
 ```
 
-### Service-initialisering
-Alle services har `initialize()` og `refreshCache()` metoder som kalles ved innlogging via `initializeUserServices()` i `main.js`.
+### Service-init
+
+Alle services har `initialize()` og `refreshCache()` kalt fra `initializeUserServices()` i `main.js`.
 
 ---
 
-## UI-arkitektur
+## Vanlige fallgruver
 
-### Skjermbytte
-- `showTeacherScreen(screenName)` i `main.js` — bytter aktiv fane for lærer
-- `showStudentScreen(screenName)` i `main.js` — bytter aktiv fane for elev
-- Aktiv fane-klasse: `bg-blue-600 hover:bg-blue-700 text-white`
-- Inaktiv fane-klasse: `bg-white hover:bg-gray-200 text-gray-800`
-
-### Faneknapper (nav-bar)
-Faneknapper i nav-baren brukes som toggle — `showStudentScreen` bruker regex replace for å bytte klasser. Element-ID bestemmer hvilken knapp som aktiveres.
-
-### i18n (flerspråk)
-- `data-i18n="nøkkel"` — erstatter element-tekst
-- `data-i18n-tooltip="nøkkel"` — erstatter title-attributt
-- Norsk/engelsk byttes via `languageService.setLanguage()`
-
-### Varsler-badge
-`notificationService` oppdaterer `inboxBadge` (elev) og `teacherMessagesBadge` (lærer). Null-sjekk `if (!el) return` håndterer manglende element.
+1. **Tailwind output.css** — verifiser at en klasse finnes i kompilert fil før bruk. Etter endring: `npm run build:css`.
+2. **ES6 modules** — `index.html` bruker `type="module"`. Relative import-paths må stemme.
+3. **Cirkulære imports** — `languageService` skal **ikke** importeres i `firebaseService.js` (kjent bug-kilde).
+4. **Race conditions** — alle Firebase-kall er async. Display-refresh etter dataendring må awaites.
+5. **Klasserom-isolering** — scheduler og notifikasjoner validerer klasserom-ID mot cache. `refreshCache()` kalles ved klasserombytte.
+6. **Virtuelle kontoer** — overføringer til `000` (sentralbank) og `001` (skattekasse) håndteres spesielt i `firebaseService` og trekkes/legges ikke til vanlige brukerkontoer.
 
 ---
 
@@ -187,56 +215,41 @@ Firebase SDK lastes via compat CDN i `index.html`. **Ikke** bruk modular SDK.
 
 ---
 
-## Deployment
+## Vanlige kommandoer
 
 ```bash
-# Deploy til Firebase Hosting
-npm run deploy
-# eller direkte:
-firebase deploy
+# Lokal utvikling: åpne index.html med Live Server (VS Code) på http://127.0.0.1:5500
+npm run watch:css        # Tailwind watch
+
+# Build og deploy
+npm run build:css        # Bygg Tailwind én gang
+npm run deploy           # Bygg + firebase deploy
+
+# (Etter fase 2) — verktøy
+npm run lint
+npm run typecheck
+npm test
 ```
 
-Lokal utvikling: åpne `index.html` med Live Server (VS Code) på `http://127.0.0.1:5500`.
-
-For å rekompilere Tailwind CSS:
-```bash
-npx tailwindcss -i css/styles.css -o css/output.css --watch
-```
+Se [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full oppsett.
 
 ---
 
-## Kjente begrensninger og fallgruver
+## Dokumentkart
 
-1. **Tailwind output.css** — aldri bruk klasser uten å verifisere at de finnes i kompilert fil. Nye klasser krever rekompilering. Gradienter som ikke er kompilert → bruk `style=` direkte.
-
-2. **ES6 modules i browser** — `index.html` bruker `type="module"`. Import-paths må være korrekte relative stier.
-
-3. **Cirkulære imports** — `languageService` skal **ikke** importeres i `firebaseService.js` (kjent bug-kilde).
-
-4. **Race conditions** — alle Firebase-kall er async. Alle display-refresh-kall etter dataendring må awaites.
-
-5. **Klasserom-isolering** — scheduler og notifikasjoner validerer klasserom-ID mot cache. `refreshCache()` kalles ved klasserombytte.
-
-6. **Virtuelle kontoer** — overføringer til `000` (sentralbank) og `001` (skattekasse) håndteres spesielt i `firebaseService` og trekkes/legges ikke til vanlige brukerkontoer.
-
----
-
-## Versjonsoversikt (siste)
-
-| Versjon | Dato | Høydepunkter |
-|---------|------|--------------|
-| 5.2 | mars 2026 | Siste stabile versjon |
-| 5.1 | januar 2026 | Diverse bugfikser og UI-forbedringer |
-| 5.0 | desember 2025 | Komplett refaktor, Firebase Firestore |
-| 4.8 | desember 2025 | Passordgjenoppretting via e-post |
-| 4.7 | desember 2025 | Kritiske async/await og Firebase-konsistens-fikser |
-| 4.3 | desember 2025 | Firebase Cloud Database aktivert |
-
-Se `MANIFEST.md` for fullstendig endringslogg.
+| Dokument | Innhold |
+|----------|---------|
+| [README.md](README.md) | Kort intro, målgruppe, dokumentkart |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System-referanse (les denne først) |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Lokalt oppsett, npm-scripts |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Firebase-deploy |
+| [docs/BRUKSANVISNING.md](docs/BRUKSANVISNING.md) | Sluttbruker-guide |
+| [CHANGELOG.md](CHANGELOG.md) | Versjonshistorikk |
+| [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md) | v6-restruktureringsspec |
 
 ---
 
 ## Kontakt
 
-**Utvikler:** Daniel Alexander Andersen Fosse  
+**Utvikler:** Daniel Alexander Andersen Fosse
 **E-post:** econsim.no@gmail.com / daniel.a.a.fosse@gmail.com
