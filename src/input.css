@@ -1,6 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /**
  * EconSim Custom Styles
- * Supplerer Tailwind CSS med custom styling
+ * Supplerer Tailwind CSS med animasjoner, scrollbar, badges og print/mobil-optimaliseringer.
  */
 
 /* Smooth transitions */
@@ -166,11 +170,11 @@ select:focus {
   .no-print {
     display: none !important;
   }
-  
+
   body {
     background: white !important;
   }
-  
+
   .shadow-md,
   .shadow-lg {
     box-shadow: none !important;
@@ -183,7 +187,7 @@ select:focus {
   body {
     font-size: 14px;
   }
-  
+
   h1 { font-size: 1.5rem; }
   h2 { font-size: 1.25rem; }
   h3 { font-size: 1.1rem; }
@@ -197,8 +201,7 @@ select:focus {
   }
 }
 
-
-/* Copyright footer - kun enkel tekst nederst på siden */
+/* Copyright footer */
 #copyrightFooter {
   background-color: #f3f4f6;
   border-top: 1px solid #e5e7eb;
@@ -208,7 +211,6 @@ select:focus {
   color: #4b5563;
 }
 
-/* Sørg for at body har minimum høyde */
 html, body {
   min-height: 100vh;
 }
