@@ -1,0 +1,9 @@
+node_modules/
+css/output.css
+.firebase/
+package-lock.json
+data/initial-data.json
+public/
+*.html
+404.html
+index.html
