@@ -51,26 +51,6 @@ class EconSimApp {
   }
 
   /**
-   * Generer HTML for bedriftslogo (bilde eller emoji)
-   * @param {Object} business - Bedriftsobjekt
-   * @param {string} size - 'small' (24px), 'medium' (32px), 'large' (48px)
-   * @returns {string} HTML for logo
-   */
-  getBusinessLogoHtml(business, size = 'medium') {
-    const sizes = {
-      small: 'w-6 h-6',
-      medium: 'w-8 h-8',
-      large: 'w-12 h-12'
-    };
-    const sizeClass = sizes[size] || sizes.medium;
-    
-    if (business.logo && business.logo.startsWith('data:')) {
-      return `<img src="${business.logo}" class="${sizeClass} rounded object-cover" alt="${escapeHtml(business.name)}">`;
-    }
-    return `<span class="${sizeClass} flex items-center justify-center text-lg">${business.emoji || '🏢'}</span>`;
-  }
-
-  /**
    * Initialiser applikasjonen
    */
   async init() {
