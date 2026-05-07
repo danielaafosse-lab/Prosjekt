@@ -61,6 +61,29 @@ class FirebaseService {
       // Hent Firestore referanse
       this.db = firebase.firestore();
 
+      // Slå på offline-persistens (IndexedDB-basert cache).
+      // Reduserer antall Firestore-lesninger dramatisk når en elev/lærer
+      // åpner og lukker faner — caching skjer på enhets-nivå.
+      // synchronizeTabs lar flere åpne faner dele samme cache uten
+      // konflikt. Feiler stille hvis nettleseren ikke støtter det
+      // (f.eks. inkognito-modus med IndexedDB blokkert).
+      try {
+        await this.db.enablePersistence({ synchronizeTabs: true });
+        console.info('💾 Firestore offline-persistens aktivert.');
+      } catch (persistenceError) {
+        if (persistenceError.code === 'failed-precondition') {
+          console.warn(
+            '⚠️ Offline-persistens kunne ikke aktiveres: flere faner åpne uten synchronizeTabs-støtte.'
+          );
+        } else if (persistenceError.code === 'unimplemented') {
+          console.warn(
+            '⚠️ Offline-persistens støttes ikke i denne nettleseren (f.eks. inkognito).'
+          );
+        } else {
+          console.warn('⚠️ Offline-persistens feilet:', persistenceError);
+        }
+      }
+
       this.initialized = true;
       console.log('🔥 Firebase initialisert!');
       return true;
