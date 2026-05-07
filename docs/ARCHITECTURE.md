@@ -62,40 +62,39 @@ Firebase lastes via **compat-CDN** i `index.html`. Bruk **ikke** modular SDK —
 │   └── index.js               # Ukentlig + månedlig scheduler
 │
 └── js/
-    ├── config.js              # Konstanter, defaults, enums
-    ├── main.js                # App-kontroller; alt koordineres her
+    ├── main.js                # 12k+ linjer; controllers ekstrakeres feature-for-feature i fase 5b
     │
-    ├── core/
-    │   ├── auth.js            # Innlogging, utlogging, sesjon
-    │   ├── dataService.js     # Abstraksjons-lag (delegerer til Firebase)
-    │   ├── dataService.firebase.js
-    │   ├── dataService.localStorage.js  # Beholdt som fallback
-    │   ├── firebaseService.js # Rå Firestore CRUD
-    │   └── eventBus.js        # Pub/sub mellom moduler
+    ├── features/              # Domeneorientert: én mappe = ett konsept
+    │   ├── auth/services/authService.js
+    │   ├── businesses/services/businessService.js
+    │   ├── classroom/services/classroomService.js
+    │   ├── email/services/emailService.js
+    │   ├── i18n/services/languageService.js
+    │   ├── jobs/services/jobService.js
+    │   ├── loans/services/loanService.js
+    │   ├── notifications/services/notificationService.js
+    │   ├── savings/services/savingsService.js
+    │   ├── savings/services/interestCalculator.js  # Ren math-helper, testet
+    │   ├── scheduler/services/schedulerService.js
+    │   ├── settings/services/settingsService.js
+    │   ├── stats/services/statsService.js
+    │   ├── taxes/services/taxService.js
+    │   ├── transactions/services/transactionService.js
+    │   ├── users/services/userService.js
+    │   └── (hver feature har en index.js som er public surface)
     │
-    ├── services/
-    │   ├── businessService.js
-    │   ├── classroomService.js
-    │   ├── emailService.js
-    │   ├── jobService.js
-    │   ├── languageService.js # i18n: norsk/engelsk
-    │   ├── loanService.js
-    │   ├── notificationService.js
-    │   ├── savingsService.js
-    │   ├── schedulerService.js
-    │   ├── settingsService.js
-    │   ├── statsService.js
-    │   ├── taxService.js
-    │   ├── transactionService.js
-    │   └── userService.js
-    │
-    ├── ui/
-    │   └── uiManager.js       # Felles UI: showSuccess/Error, modaler, skjermbytte
-    │
-    └── utils/
-        ├── formatters.js
-        ├── helpers.js
-        └── validators.js
+    └── shared/                # Plattform: data, UI, utils, typer
+        ├── config/config.js   # Konstanter, defaults, enums
+        ├── core/
+        │   ├── dataService.js      # Domain data layer (Firestore-cached)
+        │   ├── firebaseService.js  # Generisk Firestore CRUD-wrapper
+        │   └── eventBus.js         # Pub/sub
+        ├── types/index.js     # JSDoc @typedef for User, Classroom, ...
+        ├── ui/uiManager.js    # Felles UI: showSuccess/Error, modaler
+        └── utils/
+            ├── formatters.js
+            ├── helpers.js
+            └── validators.js
 ```
 
 ---

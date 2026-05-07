@@ -5,41 +5,96 @@ Norsk klasseromsøkonomisimulator for ungdomsskolen (7.–10. klasse). Lærer op
 - **Live URL:** https://econsim-5723c.web.app
 - **Firebase-prosjekt:** `econsim-5723c`
 - **Gjeldende versjon:** 5.2.1 (mars 2026)
-- **Pågående arbeid:** v6.0 — total restrukturering på branch `refactor/v6-restructure`. Se [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md) for full spec.
+- **Pågående arbeid:** v6.0 — total restrukturering på branch `refactor/v6-restructure`. Spec: [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md).
 
-For full systembeskrivelse, les [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) først (~10 min lesetid). Denne filen er en kort guide for hvordan AI skal jobbe i dette prosjektet.
+For full systembeskrivelse, les [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) først (~10 min lesetid). Denne filen forklarer hvordan AI skal jobbe i prosjektet.
 
 ---
 
 ## Status for v6-restrukturering
 
-Vi migrerer fra organisk vokst monolitt (`main.js` 12k linjer, `index.html` 3k linjer) til feature-basert arkitektur. Migrering skjer i faser; appen skal fungere etter hver fase.
+Vi har migrert fra organisk vokst monolitt til feature-basert arkitektur. Arbeidet har skjedd trinnvis; hver fase committes separat på `refactor/v6-restructure` og er verifisert mot live appen via Playwright.
 
 | Fase | Status |
 |------|--------|
-| 0 — Branch og sikkerhetsnett | I gang |
-| 1 — Død kod, CSS-konsolidering, dokumentsplitting | Pågår |
-| 2 — Verktøy (ESLint, Prettier, Vitest, JSDoc) | Ikke startet |
-| 3 — Data-lag forenkling | Ferdig (passthrough fjernet, firebaseService flyttet til `js/shared/core/`) |
-| 4 — Splitt `index.html` til templates | Ikke startet |
-| 5 — Splitt `main.js` til features | Ikke startet |
-| 6 — Ytelse (batch writes, scheduler-parallell, shards) | Ikke startet |
-| 7 — JSDoc-typer og Vitest-tester | Ikke startet |
-| 8 — Cutover til v6 | Ikke startet |
+| 0 — Branch og sikkerhetsnett | Ferdig |
+| 1 — Død kod, CSS-konsolidering, dokumentsplitting | Ferdig |
+| 2 — Verktøy (ESLint, Prettier, Vitest, JSDoc) | Ferdig |
+| 3 — Data-lag forenkling (passthrough fjernet, firebaseService til shared/) | Ferdig |
+| 4 — Splitt `index.html` til templates | **Utsatt** (se under) |
+| 5a — Service-laget migrert til `js/features/X/` | Ferdig |
+| 5b — Splitt `main.js` til feature-controllers | **Utsatt** (se under) |
+| 6 — Ytelse (Firestore offline persistence + composite indexes) | Ferdig |
+| 7 — JSDoc-typer og Vitest-tester | Ferdig (24 tester grønne) |
+| 8 — Cutover (denne oppdateringen) | Ferdig |
 
-**Mål-arkitektur** (etter v6):
+### Hva er utsatt og hvorfor
+
+**Fase 4 (template-ekstrakering fra index.html):** index.html er fortsatt ~3 200 linjer og inneholder alle skjermer skjult med `hidden`-klasse. Et komplett uttrekk krever en `templateLoader` med livssyklus (activate/deactivate per controller) og er tett koblet til fase 5b. Skal gjøres feature-for-feature i fremtidig økt.
+
+**Fase 5b (controller-ekstrakering fra main.js):** main.js er fortsatt ~12 200 linjer og fungerer som en god-fil for alle dashboards og event-handlere. Forretningslogikken (services) er nå ren og isolert i features/, men UI-koden i main.js er fortsatt monolittisk. Anbefalt å trekke ut feature-for-feature: `i18n` → `notifications` → `stats` → `auth` → `users` → `classroom` → `transactions` → `savings` → `loans` → `jobs` → `businesses` → `taxes` → `scheduler`. Hver feature får egen controller-fil under `js/features/X/controllers/`.
+
+Begrunnelse: fase 4+5b er stort arbeid som krever testing av hver UI-flow per feature. Med Playwright tilgjengelig som sikkerhetsnett kan dette gjøres i fremtidige økter, én feature om gangen.
+
+---
+
+## Arkitektur
+
+### Mappestruktur (etter v6 fase 5a)
 
 ```
 js/
-├── features/      # Domeneorientert: én mappe = ett konsept (savings, jobs, taxes, ...)
-├── shared/        # Plattform: data, UI, utils, typer
-└── app/           # Sammenkobling: bootstrap, routing, templateLoader
+├── main.js                 # 12k+ linjer (controllers ekstrakeres senere)
+│
+├── features/               # Domeneorientert: én mappe = ett konsept
+│   ├── auth/
+│   ├── businesses/
+│   ├── classroom/
+│   ├── email/
+│   ├── i18n/               # languageService
+│   ├── jobs/
+│   ├── loans/
+│   ├── notifications/
+│   ├── savings/
+│   ├── scheduler/
+│   ├── settings/
+│   ├── stats/
+│   ├── taxes/
+│   ├── transactions/
+│   └── users/
+│
+└── shared/                 # Plattform: data, UI, utils, typer
+    ├── config/
+    ├── core/               # dataService, eventBus, firebaseService
+    ├── types/              # JSDoc @typedef
+    ├── ui/                 # uiManager
+    └── utils/              # formatters, helpers, validators
 ```
 
-Avhengighetsregler (vil håndheves av ESLint i fase 2):
-- `features/X/services/` kan importere `shared/*` og andre features' services (atomiske transaksjoner)
-- `features/X/controllers/` kan IKKE importere andre features' controllers (cross-feature UI går via `eventBus`)
-- `shared/*` har ingen avhengigheter til features
+### Feature-mappemal
+
+```
+features/X/
+├── services/               # Forretningslogikk
+│   └── Xservice.js
+├── index.js                # Public surface (det andre features importerer fra)
+└── (controllers/, templates/ — kommer i fase 5b)
+```
+
+**Public surface:** Andre features importerer alltid via `js/features/X/index.js`, ALDRI direkte fra services. Internt kan filer flyttes uten å bryte konsumenter.
+
+### Avhengighetsregler
+
+| Fra | Til | Tillatt? |
+|-----|-----|----------|
+| `features/X/services/` | `shared/*` | Ja |
+| `features/X/services/` | `features/Y/index.js` | **Ja** (atomiske transaksjoner krever direkte kall) |
+| `features/X/services/` | `features/Y/services/Y.js` direkte | Nei (gå via index.js) |
+| `features/X/controllers/` | annet feature's controllers | Nei (bruk eventBus) |
+| `shared/*` | `features/*` | Bør unngås (én eksisterende violation: `shared/ui/uiManager.js` → `auth`-feature, lev med det inntil fase 5b) |
+| Sirkulær import | hvor som helst | Nei (ESLint blokkerer) |
+
+ESLint regler (`import-x/no-cycle`, `import-x/no-self-import`) håndhever dette i dag. `import-x/no-restricted-paths` er klargjort men deaktivert — aktiveres når fase 5b er ferdig.
 
 ---
 
@@ -48,100 +103,28 @@ Avhengighetsregler (vil håndheves av ESLint i fase 2):
 | Komponent | Teknologi |
 |-----------|-----------|
 | Frontend | HTML5 + ES6 Modules |
-| CSS | Tailwind CSS — **kompilert fra `src/input.css` til `css/output.css`** |
-| Database | Firebase Firestore (compat SDK via CDN) |
+| CSS | Tailwind CSS — kompilert fra `src/input.css` til `css/output.css` |
+| Database | Firebase Firestore (compat SDK via CDN) med IndexedDB offline persistence |
 | Hosting | Firebase Hosting |
-| Bakgrunnsjobber | Firebase Cloud Functions (ukentlig + månedlig) |
+| Bakgrunnsjobber | Firebase Cloud Functions (ukentlig + månedlig trigger-doc) |
 | Autentisering | Egenutviklet (SHA-256 passord-hash) |
-| E-post | EmailJS (passordgjenoppretting) |
+| E-post | EmailJS / Gmail SMTP via Cloud Functions |
+| Utviklerverktøy | ESLint 10, Prettier 3, Vitest 4, TypeScript 6 (kun checkJs) |
 
-### Viktig om Tailwind
+### Tailwind
 
-CSS er kompilert til `css/output.css` ved hjelp av `npm run build:css`. **Klasser som ikke finnes i kompilert fil vil ikke virke.** Verifiser med Grep i `css/output.css` før du bruker en ny klasse. For farger/gradienter som ikke er kompilert, bruk inline `style=`.
+CSS kompileres fra `src/input.css` (Tailwind-direktiver + custom CSS) til `css/output.css`. **Klasser som ikke finnes i kompilert fil vil ikke virke.** Verifiser med Grep i `css/output.css` før bruk. Kjør `npm run build:css` etter endringer.
 
-Bekreftet tilgjengelig: `hover:bg-gray-200`. Ikke tilgjengelig: `hover:bg-gray-100`.
-
-Etter endring av Tailwind-klasser i HTML eller JS, kjør `npm run build:css`.
-
----
-
-## Gjeldende filstruktur (pre-v6)
-
-```
-/Prosjekt
-├── index.html                    # Hele frontend (3k+ linjer — splittes i fase 4)
-├── CLAUDE.md                     # Denne filen
-├── README.md                     # Prosjekt-intro
-├── CHANGELOG.md                  # Versjonshistorikk (Keep a Changelog format)
-├── firebase.json                 # Firebase Hosting + Functions-konfig
-├── firestore.rules               # Firestore sikkerheetsregler
-├── package.json
-│
-├── docs/
-│   ├── ARCHITECTURE.md           # Systemreferanse (les denne først)
-│   ├── DEVELOPMENT.md            # Lokal utvikling
-│   ├── DEPLOYMENT.md             # Deploy-guide
-│   ├── BRUKSANVISNING.md         # Sluttbrukerguide (lærer/elev)
-│   └── superpowers/specs/        # v6 design-spec
-│
-├── src/
-│   └── input.css                 # Tailwind-kilde (direktiver + custom CSS)
-│
-├── css/
-│   └── output.css                # Kompilert (DETTE er det som lastes)
-│
-├── data/
-│   └── initial-data.json         # Startdata for demo-klasserom
-│
-├── functions/                    # Firebase Cloud Functions
-│   └── index.js
-│
-└── js/
-    ├── config.js                 # Konstanter, kontostatus-enums
-    ├── main.js                   # 12k+ linjer — splittes i fase 5
-    │
-    ├── core/
-    │   ├── auth.js
-    │   ├── dataService.js                # Domain data layer (cached, ~1800 linjer — splittes i fase 5)
-    │   └── eventBus.js
-    │
-    ├── shared/                    # v6-mål: gjenbrukbar plattform (fyles ut gjennom fase 5)
-    │   └── core/
-    │       └── firebaseService.js  # Generisk Firestore CRUD-wrapper
-    │
-    ├── services/                 # Forretningslogikk per domene
-    │   ├── businessService.js
-    │   ├── classroomService.js
-    │   ├── emailService.js
-    │   ├── jobService.js
-    │   ├── languageService.js
-    │   ├── loanService.js
-    │   ├── notificationService.js
-    │   ├── savingsService.js
-    │   ├── schedulerService.js
-    │   ├── settingsService.js
-    │   ├── statsService.js
-    │   ├── taxService.js
-    │   ├── transactionService.js
-    │   └── userService.js
-    │
-    ├── ui/
-    │   └── uiManager.js          # Modaler, toasts, skjermbytte
-    │
-    └── utils/
-        ├── formatters.js
-        ├── helpers.js
-        └── validators.js
-```
+Bekreftet tilgjengelig: `hover:bg-gray-200`. Ikke tilgjengelig: `hover:bg-gray-100`. For ikke-kompilerte farger/gradienter bruk inline `style=`.
 
 ---
 
-## Kjernekonsepter (kortform — full beskrivelse i ARCHITECTURE.md)
+## Kjernekonsepter
 
 ### Kontostruktur
 
 Tre-sifret kontonummer per klasserom:
-- `000` Sentralbank (utømmelig kilde)
+- `000` Sentralbank (utømmelig)
 - `001` Skattekasse
 - `101–199` Elev-sjekk-kontoer
 - `201–299` Sparekontoer (parres med 1XX)
@@ -154,7 +137,7 @@ Tre-sifret kontonummer per klasserom:
 
 ### Tidsmodell
 
-1 uke i appen = 1 måned virkelig. Sparerente 2 % årlig (`/12` per uke). Fondsavkastning 8 % ± 3 % kvartalsvis. Scheduler ukentlig via Cloud Functions.
+1 uke i appen = 1 måned virkelig (`accelerated`). Sparerente 2 % årlig (`/12` per uke). Fondsavkastning 8 % ± 3 % kvartalsvis. Scheduler trigger ukentlig via Cloud Functions; klienten utfører prosesseringen ved første lærer-innlogging etter trigger.
 
 ### Skattesystem
 
@@ -165,12 +148,14 @@ Flat eller progressiv:
 - Fradragsgrense: 500 KKr
 - Utbytteskatt: 22 %
 
-### Sparerente-formel
+### Sparerente — kritisk invariant
 
 ```javascript
-const interest = Math.round(account.balance * periodRate);
+import { periodInterest } from './interestCalculator.js';
+const interest = periodInterest(account.balance, ratePerPeriod);
 ```
-**Bruk `Math.round`, ikke `Math.floor`** — ellers får lave saldoer aldri rente.
+
+**Bruk `Math.round`, ikke `Math.floor`** — ellers får lave saldoer aldri rente. Helperen i `js/features/savings/services/interestCalculator.js` enforcer dette og er testet i `interestCalculator.test.js`.
 
 ### Async-mønster
 
@@ -187,16 +172,52 @@ await this.updateBalanceDisplay();
 
 Alle services har `initialize()` og `refreshCache()` kalt fra `initializeUserServices()` i `main.js`.
 
+### Cross-feature kommunikasjon
+
+- **Service-lag**: direkte import via `index.js` (forretningslogikk gjenbrukes — skatt leser saldoer fra sparing/fond/bedrift)
+- **UI-lag**: via `shared/core/eventBus`. Standard-events: `balance.changed`, `notification.new`, `classroom.switched`, `user.loggedIn` / `user.loggedOut`
+
 ---
 
 ## Vanlige fallgruver
 
-1. **Tailwind output.css** — verifiser at en klasse finnes i kompilert fil før bruk. Etter endring: `npm run build:css`.
-2. **ES6 modules** — `index.html` bruker `type="module"`. Relative import-paths må stemme.
-3. **Cirkulære imports** — `languageService` skal **ikke** importeres i `firebaseService.js` (kjent bug-kilde).
+1. **Tailwind output.css** — verifiser klasse i kompilert fil før bruk. Kjør `npm run build:css` etter endringer.
+2. **ES6 modules** — relative import-paths må stemme; bruk feature `index.js` aldri direkte service-filer.
+3. **Cirkulære imports** — `languageService` skal **ikke** importeres i `firebaseService.js`. ESLint fanger dette.
 4. **Race conditions** — alle Firebase-kall er async. Display-refresh etter dataendring må awaites.
 5. **Klasserom-isolering** — scheduler og notifikasjoner validerer klasserom-ID mot cache. `refreshCache()` kalles ved klasserombytte.
 6. **Virtuelle kontoer** — overføringer til `000` (sentralbank) og `001` (skattekasse) håndteres spesielt i `firebaseService` og trekkes/legges ikke til vanlige brukerkontoer.
+7. **Firebase persistence** — slått på i `firebaseService.initialize()`. Feiler stille i inkognito-modus eller hvis flere faner.
+
+---
+
+## Vanlige kommandoer
+
+```bash
+# Lokal utvikling: åpne index.html med Live Server (VS Code) på http://127.0.0.1:5500
+npm run watch:css        # Tailwind watch i bakgrunnen
+
+# Build og deploy
+npm run build:css        # Bygg Tailwind én gang
+npm run deploy           # Bygg + firebase deploy
+
+# Verktøy
+npm run lint             # ESLint
+npm run lint:fix         # Auto-fix
+npm run format           # Prettier
+npm run typecheck        # tsc --noEmit (sjekker JSDoc-typer)
+npm test                 # Vitest (24 tester per nå)
+npm run test:watch       # Watch mode
+npm run verify           # lint + typecheck + test
+```
+
+Se [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full oppsett.
+
+---
+
+## Testing med Playwright
+
+For verifikasjon under utvikling: en Playwright MCP-extension er installert lokalt. AI-assistent kan navigere til `http://127.0.0.1:5500/`, logge inn (demo-kontoer: `laerer`/`passord`, `kari123`/`passord123`), klikke gjennom UI og lese console errors. Bruk dette til å bekrefte at endringer ikke knekker eksisterende flows.
 
 ---
 
@@ -215,25 +236,7 @@ const firebaseConfig = {
 
 Firebase SDK lastes via compat CDN i `index.html`. **Ikke** bruk modular SDK.
 
----
-
-## Vanlige kommandoer
-
-```bash
-# Lokal utvikling: åpne index.html med Live Server (VS Code) på http://127.0.0.1:5500
-npm run watch:css        # Tailwind watch
-
-# Build og deploy
-npm run build:css        # Bygg Tailwind én gang
-npm run deploy           # Bygg + firebase deploy
-
-# (Etter fase 2) — verktøy
-npm run lint
-npm run typecheck
-npm test
-```
-
-Se [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full oppsett.
+Composite indexes definert i `firestore.indexes.json` for `transactions/jobs/loans/businesses/notifications/users` filtrert på `classroomId`.
 
 ---
 
@@ -242,7 +245,7 @@ Se [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full oppsett.
 | Dokument | Innhold |
 |----------|---------|
 | [README.md](README.md) | Kort intro, målgruppe, dokumentkart |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System-referanse (les denne først) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System-referanse |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Lokalt oppsett, npm-scripts |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Firebase-deploy |
 | [docs/BRUKSANVISNING.md](docs/BRUKSANVISNING.md) | Sluttbruker-guide |
