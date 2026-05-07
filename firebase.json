@@ -5,7 +5,25 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**",
-      "functions/**"
+      "functions/**",
+      ".playwright-mcp/**",
+      ".vscode/**",
+      ".claude/**",
+      "src/**",
+      "docs/**",
+      "*.md",
+      "package.json",
+      "package-lock.json",
+      "tsconfig.json",
+      "eslint.config.js",
+      "vitest.config.js",
+      ".prettierrc.json",
+      ".prettierignore",
+      "tailwind.config.js",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "**/*.test.js",
+      "**/*.spec.js"
     ],
     "headers": [
       {
