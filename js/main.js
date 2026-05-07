@@ -3,27 +3,27 @@
  * Initialiserer og starter hele applikasjonen
  */
 
-import { dataService } from './core/dataService.js';
-import { authService } from './core/auth.js';
-import { eventBus, EVENTS } from './core/eventBus.js';
-import { uiManager } from './ui/uiManager.js';
-import { transactionService } from './services/transactionService.js';
-import { jobService } from './services/jobService.js';
-import { userService } from './services/userService.js';
-import { settingsService } from './services/settingsService.js';
-import { taxService } from './services/taxService.js';
-import { loanService } from './services/loanService.js';
-import { businessService } from './services/businessService.js';
-import { savingsService } from './services/savingsService.js';
-import { notificationService } from './services/notificationService.js';
-import { schedulerService } from './services/schedulerService.js';
-import { classroomService } from './services/classroomService.js';
-import { languageService } from './services/languageService.js';
-import { statsService } from './services/statsService.js';
+import { dataService } from './shared/core/dataService.js';
+import { authService } from './features/auth/index.js';
+import { eventBus, EVENTS } from './shared/core/eventBus.js';
+import { uiManager } from './shared/ui/uiManager.js';
+import { transactionService } from './features/transactions/index.js';
+import { jobService } from './features/jobs/index.js';
+import { userService } from './features/users/index.js';
+import { settingsService } from './features/settings/index.js';
+import { taxService } from './features/taxes/index.js';
+import { loanService } from './features/loans/index.js';
+import { businessService } from './features/businesses/index.js';
+import { savingsService } from './features/savings/index.js';
+import { notificationService } from './features/notifications/index.js';
+import { schedulerService } from './features/scheduler/index.js';
+import { classroomService } from './features/classroom/index.js';
+import { languageService } from './features/i18n/index.js';
+import { statsService } from './features/stats/index.js';
 import { emailService } from './features/email/index.js';
-import { formatCurrency, formatDate, formatRelativeTime, translateTransactionDescription } from './utils/formatters.js';
-import { escapeHtml, hashPassword } from './utils/helpers.js';
-import { APP_CONFIG, DEFAULT_SETTINGS, USER_TYPES, STORAGE_KEYS } from './config.js';
+import { formatCurrency, formatDate, formatRelativeTime, translateTransactionDescription } from './shared/utils/formatters.js';
+import { escapeHtml, hashPassword } from './shared/utils/helpers.js';
+import { APP_CONFIG, DEFAULT_SETTINGS, USER_TYPES, STORAGE_KEYS } from './shared/config/config.js';
 
 // Eksporter språkfunksjon globalt for HTML onclick
 window.setLanguage = (lang) => {
@@ -10348,7 +10348,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
         }
         
         // Verifiser nåværende passord
-        const { hashPassword, verifyPassword } = await import('./utils/helpers.js');
+        const { hashPassword, verifyPassword } = await import('./shared/utils/helpers.js');
         const isPasswordCorrect = await verifyPassword(currentPassword, user.password);
         if (!isPasswordCorrect) {
           uiManager.showError(languageService.t('error.currentPasswordWrong'));

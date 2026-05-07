@@ -70,6 +70,7 @@ node_modules/
 
 # Claude Code workspace
 .claude/
+.playwright-mcp/
 
 # IDE
 .vscode/

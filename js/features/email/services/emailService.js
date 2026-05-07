@@ -5,7 +5,7 @@
  */
 
 import { firebaseService } from '../../../shared/core/firebaseService.js';
-import { hashPassword } from '../../../utils/helpers.js';
+import { hashPassword } from '../../../shared/utils/helpers.js';
 
 const COLLECTIONS = {
   EMAIL_VERIFICATIONS: 'emailVerifications',
