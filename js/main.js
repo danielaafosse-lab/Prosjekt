@@ -20,7 +20,7 @@ import { schedulerService } from './services/schedulerService.js';
 import { classroomService } from './services/classroomService.js';
 import { languageService } from './services/languageService.js';
 import { statsService } from './services/statsService.js';
-import { emailService } from './services/emailService.js';
+import { emailService } from './features/email/index.js';
 import { formatCurrency, formatDate, formatRelativeTime, translateTransactionDescription } from './utils/formatters.js';
 import { escapeHtml, hashPassword } from './utils/helpers.js';
 import { APP_CONFIG, DEFAULT_SETTINGS, USER_TYPES, STORAGE_KEYS } from './config.js';
