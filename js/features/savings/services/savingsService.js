@@ -14,6 +14,7 @@ import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../../../shared/config/config.js
 import { dataService } from '../../../shared/core/dataService.js';
 import { eventBus } from '../../../shared/core/eventBus.js';
 import { languageService } from '../../i18n/index.js';
+import { getPeriodsPerYear, periodicRate, periodInterest } from './interestCalculator.js';
 
 class SavingsService {
     constructor() {
@@ -196,10 +197,12 @@ class SavingsService {
     }
 
     /**
-     * Antall perioder per år basert på valgt tidsmodell
+     * Antall perioder per år basert på valgt tidsmodell.
+     * Tynn delegasjon til den rene helperen — instans-metoden er
+     * beholdt for bakoverkompatibilitet med eksisterende kallere.
      */
     getPeriodsPerYear(timeModel) {
-        return timeModel === 'realistic' ? 52 : 12;
+        return getPeriodsPerYear(timeModel);
     }
 
     /**
@@ -477,13 +480,13 @@ class SavingsService {
      */
     async processWeeklySavingsInterest() {
         const settings = await this.getSettings();
-        const periodsPerYear = this.getPeriodsPerYear(settings.simulation?.timeModel);
-        const periodRate = settings.savings.annualRate / 100 / periodsPerYear;
+        const periodsPerYear = getPeriodsPerYear(settings.simulation?.timeModel);
+        const ratePerPeriod = periodicRate(settings.savings.annualRate, periodsPerYear);
         const results = [];
 
         for (const account of this.savingsAccounts) {
             if (account.balance > 0) {
-                const interest = Math.round(account.balance * periodRate);
+                const interest = periodInterest(account.balance, ratePerPeriod);
 
                 if (interest > 0) {
                     account.balance += interest;
