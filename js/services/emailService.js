@@ -4,7 +4,7 @@
  * Bruker Firebase Cloud Functions for å sende e-post via Gmail SMTP
  */
 
-import { firebaseService } from '../core/firebaseService.js';
+import { firebaseService } from '../shared/core/firebaseService.js';
 import { hashPassword } from '../utils/helpers.js';
 
 const COLLECTIONS = {

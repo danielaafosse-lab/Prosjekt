@@ -3,7 +3,7 @@
  * Håndterer innloggingsstatistikk, geografisk data og brukeraktivitet
  */
 
-import { firebaseService } from '../core/firebaseService.js';
+import { firebaseService } from '../shared/core/firebaseService.js';
 
 // Collection name for login statistics
 const COLLECTIONS = {
