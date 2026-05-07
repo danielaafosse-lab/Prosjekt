@@ -6540,7 +6540,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
                   class="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 border rounded">📖 ${languageService.t('business.readApplication')}</button>
                 <button onclick="window.econSim.hireApplicant('${business.id}', '${job.id}', '${app.id}')" 
                   class="text-green-600 hover:text-green-800 text-xs px-2 py-1 border rounded">✅ ${languageService.t('business.hire')}</button>
-                <button onclick="window.econSim.rejectApplication('${app.id}')" 
+                <button onclick="window.econSim.rejectBusinessJobApplication('${app.id}')"
                   class="text-red-600 hover:text-red-800 text-xs px-2 py-1 border rounded">❌ ${languageService.t('business.reject')}</button>
               </div>
             </div>
@@ -6768,7 +6768,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
           <div class="flex gap-2 justify-end">
             <button onclick="document.getElementById('viewApplicationModal').remove()" 
               class="px-4 py-2 border rounded hover:bg-gray-50">${languageService.t('btn.close')}</button>
-            <button onclick="window.econSim.rejectApplication('${app.id}'); document.getElementById('viewApplicationModal').remove();" 
+            <button onclick="window.econSim.rejectBusinessJobApplication('${app.id}'); document.getElementById('viewApplicationModal').remove();"
               class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">❌ ${languageService.t('btn.reject')}</button>
             <button onclick="window.econSim.hireApplicant('${app.businessId}', '${app.jobId}', '${app.id}'); document.getElementById('viewApplicationModal').remove();" 
               class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">✅ ${languageService.t('btn.hire')}</button>
@@ -7007,9 +7007,13 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
   }
 
   /**
-   * Avslå en søknad
+   * Avslå en bedriftsjobb-søknad.
+   * Renamet fra rejectApplication for å unngå kollisjon med
+   * den vanlige jobb-versjonen lenger oppe i klassen — JS sin
+   * "siste definisjon vinner"-regel skygget over den, så vanlige
+   * jobbavslag rutet feil før denne fiksen.
    */
-  async rejectApplication(applicationId) {
+  async rejectBusinessJobApplication(applicationId) {
     const applications = await dataService.getBusinessJobApplications();
     const appIndex = applications.findIndex(a => a.id === applicationId);
 
@@ -7520,35 +7524,10 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     }
   }
 
-  /**
-   * Vis modal for salg av eierandel
-   */
-  showSellOwnershipModal() {
-    const business = businessService.getBusinessById(this.selectedBusinessId);
-    if (!business) {
-      uiManager.showError(languageService.t('error.noBusinessSelected'));
-      return;
-    }
-    
-    const user = authService.getCurrentUser();
-    const owner = business.owners.find(o => o.userId === user.id);
-    
-    if (!owner) {
-      uiManager.showError(languageService.t('error.notOwner'));
-      return;
-    }
-    
-    // Oppdater modal med eierinfo
-    document.getElementById('sellBusinessId').value = business.id;
-    document.getElementById('modalMyOwnershipPercentage').textContent = owner.percentage + '%';
-    document.getElementById('modalMyOwnershipCostBasis').textContent = formatCurrency(owner.capitalContributions || 0, this.settings.currencySymbol);
-    
-    // Last sendte tilbud
-    this.loadModalOwnershipOffers(business);
-    
-    // Vis modal
-    document.getElementById('sellOwnershipModal').classList.remove('hidden');
-  }
+  // Tidligere fantes en eldre, synkron showSellOwnershipModal her som
+  // ble skygget av den asynkrone versjonen lenger nede. Beholdt
+  // funksjonalitet (currency-formatering og loadModalOwnershipOffers)
+  // er flyttet inn i den aktive versjonen.
 
   /**
    * Last sendte eierandel-tilbud i modal
@@ -8480,34 +8459,43 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
   }
 
   /**
-   * Vis selg eierandel modal
+   * Vis selg eierandel modal.
+   * Slått sammen fra to tidligere versjoner — én var skygget av den
+   * andre, slik at currency-formatering og lasting av sendte tilbud
+   * aldri kjørte. Begge er nå med her.
    */
   async showSellOwnershipModal() {
     const user = authService.getCurrentUser();
     const business = businessService.getBusinessById(this.selectedBusinessId);
-    
+
     if (!business) {
       uiManager.showError(languageService.t('error.noBusinessSelected'));
       return;
     }
-    
-    // Sett business ID
-    document.getElementById('sellBusinessId').value = business.id;
-    
-    // Vis eierandel
+
     const myOwnership = business.owners.find(o => o.userId === user.id);
-    document.getElementById('modalMyOwnershipPercentage').textContent = `${myOwnership?.percentage || 0}%`;
-    document.getElementById('modalSellPercentage').max = myOwnership?.percentage || 0;
-    
-    // Vis kostpris
-    const costBasis = myOwnership?.costBasis || 0;
-    document.getElementById('modalMyOwnershipCostBasis').textContent = `${costBasis} KKr`;
-    
+    if (!myOwnership) {
+      uiManager.showError(languageService.t('error.notOwner'));
+      return;
+    }
+
+    document.getElementById('sellBusinessId').value = business.id;
+    document.getElementById('modalMyOwnershipPercentage').textContent = `${myOwnership.percentage || 0}%`;
+    document.getElementById('modalSellPercentage').max = myOwnership.percentage || 0;
+    document.getElementById('modalMyOwnershipCostBasis').textContent = formatCurrency(
+      myOwnership.costBasis || 0,
+      this.settings.currencySymbol
+    );
+
     // Nullstill skjemaet
     document.getElementById('modalBuyerAccountNumber').value = '';
     document.getElementById('modalSellPercentage').value = '';
     document.getElementById('modalSellPrice').value = '';
-    
+
+    // Last sendte tilbud (var glemt før — bare den synkrone versjonen
+    // gjorde dette, og den var skygget).
+    this.loadModalOwnershipOffers(business);
+
     document.getElementById('sellOwnershipModal').classList.remove('hidden');
   }
 
@@ -9746,91 +9734,14 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
   }
 
   /**
-   * Send melding fra elev
+   * Send melding fra elev — funksjonaliteten er fjernet.
+   * Elever får bare varsler nå (system-meldinger fra banken og lærer-
+   * kunngjøringer); peer-to-peer-meldinger ble fjernet i en tidligere
+   * versjon. Metoden beholdes som no-op for å unngå at gammel HTML
+   * eller event-binding kaster feil hvis den fortsatt refererer hit.
    */
   async sendStudentMessage() {
-    // Peer-to-peer messaging removed; students only receive Varsler.
     return;
-
-    const user = authService.getCurrentUser();
-    if (!user) return;
-
-    const recipientSelect = document.getElementById('studentMessageRecipient');
-    const subjectInput = document.getElementById('studentMessageSubject');
-    const bodyInput = document.getElementById('studentMessageBody');
-
-    const recipient = recipientSelect?.value;
-    const subject = subjectInput?.value?.trim();
-    const body = bodyInput?.value?.trim();
-
-    if (!recipient) {
-      uiManager.showError(languageService.t('error.selectRecipient'));
-      return;
-    }
-    if (!subject) {
-      uiManager.showError(languageService.t('error.writeSubject'));
-      return;
-    }
-    if (!body) {
-      uiManager.showError(languageService.t('error.writeMessage'));
-      return;
-    }
-
-    const [recipientType, recipientId] = recipient.split(':');
-    const senderName = user.name || user.username;
-
-    if (recipientType === 'teacher') {
-      // Send til lærer
-      try {
-        await dataService.createTeacherMessage({
-          type: 'student_message',
-          fromId: user.id,
-          fromName: senderName,
-          fromType: 'student',
-          title: subject,
-          message: body
-        });
-      } catch (e) {
-        console.error('Firebase feilet ved sending av lærermelding:', e);
-      }
-    } else if (recipientType === 'student') {
-      // Send til annen elev
-      try {
-        await dataService.createInboxMessage({
-          recipientId: recipientId,
-          type: 'student_message',
-          fromId: user.id,
-          fromName: senderName,
-          fromType: 'student',
-          title: subject,
-          message: body
-        });
-      } catch (e) {
-        console.error('Firebase feilet ved sending av elevmelding:', e);
-      }
-    } else if (recipientType === 'business') {
-      // Send til bedrift
-      try {
-        await dataService.createBusinessMessage({
-          businessId: recipientId,
-          type: 'student_message',
-          fromId: user.id,
-          fromName: senderName,
-          fromType: 'student',
-          title: subject,
-          message: body
-        });
-      } catch (e) {
-        console.error('Firebase feilet ved sending av bedriftsmelding:', e);
-      }
-    }
-
-    // Tøm feltene
-    subjectInput.value = '';
-    bodyInput.value = '';
-    recipientSelect.value = '';
-
-    uiManager.showSuccess(languageService.t('msg.messageSent'));
   }
 
   /**

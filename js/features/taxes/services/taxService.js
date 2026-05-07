@@ -83,11 +83,17 @@ class TaxService {
     }
     
     /**
-     * Refresh cache - for å hente nyeste data
+     * Refresh cache - for å hente nyeste data.
+     *
+     * Kalles ved klasserombytte (`_cacheClassroomId` invalideres) og
+     * etter datamutasjoner som kan ha endret skattekonto eller
+     * innstillinger. Reload-en er asynkron — kallere må awaite hvis
+     * de vil vente på fersk data før neste read.
      */
     async refreshCache() {
         this._taxAccountCache = null;
         this._settingsCache = null;
+        this._cacheClassroomId = null;
         await this.loadTaxAccountAsync();
         await this.loadSettingsAsync();
     }
@@ -401,13 +407,6 @@ class TaxService {
         };
     }
 
-    /**
-     * Tvunget refresh av cache (f.eks. ved bytte av klasserom)
-     */
-    refreshCache() {
-        this._taxAccountCache = null;
-        this._cacheClassroomId = null;
-    }
 }
 
 export const taxService = new TaxService();
