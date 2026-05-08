@@ -245,6 +245,70 @@ exports.scheduledMonthlyProcessing = functions.pubsub
     return null;
   });
 
+/**
+ * Scheduled weekly Firestore backup — Sunday 03:00 norsk tid
+ *
+ * Eksporterer hele Firestore-databasen til Cloud Storage-buckten
+ * `gs://econsim-5723c-backups/firestore/<dato>`. Krever at bucken
+ * eksisterer og at Cloud Functions service account har rollen
+ * `Cloud Datastore Import Export Admin`.
+ *
+ * Manuell setup første gang:
+ *   gsutil mb -l europe-west1 gs://econsim-5723c-backups
+ *   gcloud projects add-iam-policy-binding econsim-5723c \
+ *     --member="serviceAccount:econsim-5723c@appspot.gserviceaccount.com" \
+ *     --role="roles/datastore.importExportAdmin"
+ *   gsutil iam ch \
+ *     "serviceAccount:econsim-5723c@appspot.gserviceaccount.com:roles/storage.admin" \
+ *     gs://econsim-5723c-backups
+ *
+ * Restore via gcloud:
+ *   gcloud firestore import gs://econsim-5723c-backups/firestore/<dato>
+ */
+exports.scheduledFirestoreBackup = functions.pubsub
+  .schedule('0 1 * * 0')  // 01:00 UTC = 03:00 CET söndag
+  .timeZone('Europe/Oslo')
+  .onRun(async () => {
+    const projectId = process.env.GCP_PROJECT || process.env.GCLOUD_PROJECT || 'econsim-5723c';
+    const bucketName = `${projectId}-backups`;
+    const date = new Date().toISOString().slice(0, 10);
+    const outputPrefix = `gs://${bucketName}/firestore/${date}`;
+
+    const { google } = require('googleapis');
+    const auth = new google.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/datastore'],
+    });
+    const authClient = await auth.getClient();
+    const accessToken = (await authClient.getAccessToken()).token;
+
+    // Bruk REST API direkte for å unngå ekstra avhengighet til @google-cloud/firestore-admin
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`;
+
+    try {
+      const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+      const response = await (await fetch)(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ outputUriPrefix: outputPrefix }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Backup failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Firestore backup started:', result.name, 'output:', outputPrefix);
+      return { success: true, operation: result.name, output: outputPrefix };
+    } catch (error) {
+      console.error('Firestore backup error:', error);
+      throw error;
+    }
+  });
+
 function getWeekNumber(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7;
