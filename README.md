@@ -52,4 +52,8 @@ EconSim kjører som en akselerert simulering der **1 uke i appen tilsvarer 1 må
 
 ## Lisens
 
-All rights reserved. © 2025-2026 Daniel Alexander Andersen Fosse.
+All rights reserved. © 2025-2026 Daniel Alexander Andersen Fosse. Se [LICENSE](LICENSE) for fullstendig vilkår.
+
+## Sikkerhet
+
+Se [SECURITY.md](SECURITY.md) for trusselmodell, kjente begrensninger og rapportering av sårbarheter.
