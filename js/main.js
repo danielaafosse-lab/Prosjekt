@@ -53,6 +53,12 @@ import { formatCurrency, formatDate, formatRelativeTime, translateTransactionDes
 import { escapeHtml, hashPassword } from './shared/utils/helpers.js';
 import { APP_CONFIG, DEFAULT_SETTINGS, USER_TYPES, STORAGE_KEYS } from './shared/config/config.js';
 
+// Feature controllers — merged into EconSimApp.prototype below
+import { savingsControllerMethods } from './features/savings/controllers/savingsController.js';
+import { taxesControllerMethods } from './features/taxes/controllers/taxesController.js';
+import { classroomControllerMethods } from './features/classroom/controllers/classroomController.js';
+import { i18nControllerMethods } from './features/i18n/controllers/i18nController.js';
+
 // Eksporter språkfunksjon globalt for HTML onclick
 window.setLanguage = (lang) => {
   languageService.setLanguage(lang);
@@ -1198,118 +1204,8 @@ class EconSimApp {
     }).join('');
   }
 
-  /**
-   * Last alle klasserom for superadmin
-   */
-  async loadAllClassrooms() {
-    await this.refreshClassroomCacheFromFirebase();
-    const classrooms = classroomService.getAllClassrooms();
-    const container = document.getElementById('allClassroomsList');
-    
-    if (!container) return;
-    
-    if (classrooms.length === 0) {
-      container.innerHTML = `<p class="text-gray-500">${languageService.t('ui.noClassroomsCreated')}</p>`;
-      return;
-    }
-    
-    container.innerHTML = classrooms.map(classroom => {
-      const students = classroomService.getStudentsByClassroom(classroom.id);
-      const users = classroomService.getUsers();
-      const teacher = users.find(u => u.id === classroom.teacherId);
-      const isDemoClassroom = classroom.id === 'demo-classroom' || classroom.teacherId === 't1';
-      
-      return `
-        <div class="bg-gray-50 p-4 rounded-lg">
-          <div class="flex justify-between items-start">
-            <div>
-              <p class="font-medium text-lg">${escapeHtml(classroom.className)}</p>
-              <p class="text-sm text-gray-500">${languageService.t('demo.teacher')}: ${teacher ? escapeHtml(teacher.name) : languageService.t('common.unknown')}</p>
-              <p class="text-sm text-gray-500">${languageService.t('ui.currency')}: ${classroom.currencySymbol} • ${languageService.t('ui.startingCapital')}: ${classroom.startingBalance}</p>
-            </div>
-            <div class="text-right flex flex-col items-end gap-2">
-              ${isDemoClassroom
-                ? '<span class="text-xs text-gray-400">Beskyttet demo-klasserom</span>'
-                : `<button onclick="window.econSim.deleteClassroomAsSuperadmin('${classroom.id}')" class="text-red-600 hover:text-red-800 text-sm" title="Slett klasserom">🗑️ Slett</button>`}
-              <p class="text-2xl font-bold text-blue-600">${students.length}</p>
-              <p class="text-xs text-gray-500">${languageService.t('roles.students')}</p>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  /**
-   * Slett klasserom direkte fra superadmin (ikke demo)
-   */
-  async deleteClassroomAsSuperadmin(classroomId) {
-    if (classroomId === 'demo-classroom') {
-      uiManager.showError('Demo-klasserom kan ikke slettes.');
-      return;
-    }
-
-    if (!confirm('Er du sikker på at du vil slette dette klasserommet?')) {
-      return;
-    }
-
-    try {
-      await this.refreshClassroomCacheFromFirebase();
-
-      const users = classroomService.getUsers();
-      const classroom = await dataService.getClassroom(classroomId);
-
-      if (!classroom) {
-        uiManager.showInfo('Klasserommet er allerede slettet.');
-        await this.loadSuperadminStats();
-        await this.loadTeachersList();
-        await this.loadAllClassrooms();
-        return;
-      }
-
-      const teacherId = classroom?.teacherId || null;
-
-      // Slett alle brukere knyttet til klasserommet (elever + bank/skatt-kontoer)
-      const usersInClassroom = users.filter(u => u.classroomId === classroomId);
-      for (const user of usersInClassroom) {
-        await dataService.deleteUser(user.id);
-      }
-
-      // Slett lærer hvis koblet til klasserommet (unntatt demo-lærer)
-      if (teacherId && teacherId !== 't1') {
-        await dataService.deleteUser(teacherId);
-      }
-
-      // Slett klasserom med all klassedata
-      await dataService.deleteClassroom(classroomId);
-
-      // Oppdater local cache etter sletting
-      await this.refreshClassroomCacheFromFirebase();
-
-      uiManager.showSuccess('Klasserom slettet.');
-      await this.loadSuperadminStats();
-      await this.loadTeachersList();
-      await this.loadAllClassrooms();
-    } catch (error) {
-      console.error('Feil ved sletting av klasserom:', error);
-      uiManager.showError(error.message || 'Kunne ikke slette klasserom');
-    }
-  }
-
-  /**
-   * Synkroniser classroomService cache med ferske Firebase-data
-   */
-  async refreshClassroomCacheFromFirebase() {
-    try {
-      if (!dataService.getClassrooms) return;
-      const freshClassrooms = await dataService.getClassrooms();
-      classroomService._firebaseClassrooms = freshClassrooms;
-      classroomService.classrooms = [...freshClassrooms];
-      localStorage.setItem(STORAGE_KEYS.CLASSROOMS, JSON.stringify(freshClassrooms));
-    } catch (error) {
-      console.warn('Kunne ikke oppdatere classroom-cache:', error);
-    }
-  }
+  // loadAllClassrooms, deleteClassroomAsSuperadmin, refreshClassroomCacheFromFirebase
+  // — moved to features/classroom/controllers/classroomController.js
 
   /**
    * Opprett ny lærer (superadmin)
@@ -3783,57 +3679,7 @@ class EconSimApp {
     }
   }
 
-  /**
-   * Håndter språkendring - oppdater dynamisk innhold
-   */
-  async onLanguageChange() {
-    const user = authService.getCurrentUser();
-    if (!user) return;
-    
-    // Re-render dynamisk innhold basert på brukertype
-    if (user.type === 'teacher') {
-      await this.loadTeacherTransactions();
-      await this.loadTeacherJobs();
-      await this.loadStudentsDropdown();
-      await this.loadStudentsTable();
-      this.loadTeacherMessages();
-    } else if (user.type === 'student') {
-      await this.loadStudentTransactions();
-      await this.loadStudentJobs();
-      await this.loadStudentLoans();
-      await this.loadStudentLoansScreen();
-      await this.loadStudentAccountsSummary();
-      await this.loadStudentActiveJobsSummary();
-      this.loadStudentInbox();
-      
-      // Oppdater bedriftsmeldinger hvis elev har bedrift
-      if (this.currentBusiness) {
-        this.loadBusinessMessages(this.currentBusiness);
-      }
-      
-      // Oppdater mottakerliste for studentmeldinger
-      this.loadMessageRecipients();
-      
-      // Oppdater bedriftsdata hvis en bedrift er valgt
-      if (this.selectedBusinessId) {
-        const business = businessService.getBusinessById(this.selectedBusinessId);
-        if (business) {
-          // Oppdater maks ansatte info
-          const maxEmployees = businessService.calculateMaxEmployees(this.selectedBusinessId);
-          const maxInfoElement = document.getElementById('maxEmployeesInfo');
-          if (maxInfoElement) {
-            maxInfoElement.textContent = languageService.t('ui.employeesInfo', { current: business.employees?.length || 0, max: maxEmployees });
-          }
-          
-          // Re-render den aktive bedriftsfanen
-          const activeTab = document.querySelector('.business-tab-btn.bg-blue-600');
-          if (activeTab) {
-            this.showBusinessTab(activeTab.dataset.tab);
-          }
-        }
-      }
-    }
-  }
+  // onLanguageChange — moved to features/i18n/controllers/i18nController.js
 
   /**
    * Vis søknadsmodal
@@ -4658,72 +4504,8 @@ class EconSimApp {
     }
   }
 
-  /**
-   * Oppdater dynamiske etiketter for skattetrinn
-   */
-  getNormalizedProgressiveTaxInputs() {
-    const b1MaxEl = document.getElementById('taxBracket1Max');
-    const b2MaxEl = document.getElementById('taxBracket2Max');
-    const b2RateEl = document.getElementById('taxBracket2Rate');
-    const b3RateEl = document.getElementById('taxBracket3Rate');
-
-    let b1Max = parseInt(b1MaxEl?.value, 10);
-    if (!Number.isFinite(b1Max)) b1Max = 500;
-    b1Max = Math.max(0, b1Max);
-
-    let b2Max = parseInt(b2MaxEl?.value, 10);
-    if (!Number.isFinite(b2Max)) b2Max = 1500;
-    b2Max = Math.max(b1Max + 1, b2Max);
-
-    let b2Rate = parseInt(b2RateEl?.value, 10);
-    if (!Number.isFinite(b2Rate)) b2Rate = 25;
-    b2Rate = Math.max(0, Math.min(100, b2Rate));
-
-    let b3Rate = parseInt(b3RateEl?.value, 10);
-    if (!Number.isFinite(b3Rate)) b3Rate = 35;
-    b3Rate = Math.max(0, Math.min(100, b3Rate));
-
-    return { b1Max, b2Max, b2Rate, b3Rate };
-  }
-
-  updateTaxExamplePreview() {
-    const exampleEl = document.getElementById('taxExamplePreview');
-    if (!exampleEl) return;
-
-    let b1Max = parseInt(document.getElementById('taxBracket1Max')?.value, 10);
-    let b2Max = parseInt(document.getElementById('taxBracket2Max')?.value, 10);
-    const b2Rate = Math.max(0, Math.min(100, parseInt(document.getElementById('taxBracket2Rate')?.value, 10) || 25));
-    const b3Rate = Math.max(0, Math.min(100, parseInt(document.getElementById('taxBracket3Rate')?.value, 10) || 35));
-
-    if (!Number.isFinite(b1Max) || b1Max < 0) b1Max = 0;
-    if (!Number.isFinite(b2Max) || b2Max <= b1Max) {
-      exampleEl.textContent = languageService.t('settings.taxExample');
-      return;
-    }
-
-    const exampleIncome = 3000;
-    const taxableInBracket2 = computeTaxableRangeAmount(exampleIncome, b1Max + 1, b2Max);
-    const taxableInBracket3 = computeTaxableRangeAmount(exampleIncome, b2Max + 1, null);
-    const taxInBracket2 = Math.floor(taxableInBracket2 * (b2Rate / 100));
-    const taxInBracket3 = Math.floor(taxableInBracket3 * (b3Rate / 100));
-    const totalTax = taxInBracket2 + taxInBracket3;
-
-    exampleEl.textContent = `Eks: Ved ${exampleIncome} KKr lønn betales: 0 + (${taxableInBracket2}×${b2Rate}%) + (${taxableInBracket3}×${b3Rate}%) = ${totalTax} KKr i skatt`;
-  }
-
-  updateTaxBracketLabels() {
-    const b1Raw = parseInt(document.getElementById('taxBracket1Max')?.value, 10);
-    const b2Raw = parseInt(document.getElementById('taxBracket2Max')?.value, 10);
-    const b1Max = (Number.isFinite(b1Raw) && b1Raw >= 0) ? b1Raw : 500;
-    const b2Max = (Number.isFinite(b2Raw) && b2Raw >= 0) ? b2Raw : 1500;
-
-    const bracket2StartEl = document.getElementById('bracket2Start');
-    const bracket3StartEl = document.getElementById('bracket3Start');
-    if (bracket2StartEl) bracket2StartEl.textContent = (b1Max + 1).toString();
-    if (bracket3StartEl) bracket3StartEl.textContent = (b2Max + 1) + '+';
-
-    this.updateTaxExamplePreview();
-  }
+  // getNormalizedProgressiveTaxInputs, updateTaxExamplePreview, updateTaxBracketLabels
+  // — moved to features/taxes/controllers/taxesController.js
 
   /**
    * Vis innstillingsmodal
@@ -9013,98 +8795,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
 
   // ==================== SPARING/FOND FUNKSJONER ====================
 
-  /**
-   * Last sparing/fond for elev
-   */
-  async loadStudentSavings() {
-    const user = authService.getCurrentUser();
-    
-    // Oppdater brukskonto i savings-view
-    const privateBalanceEl = document.getElementById('savingsPrivateBalance');
-    const privateAccountEl = document.getElementById('savingsPrivateAccount');
-    if (privateBalanceEl) {
-      privateBalanceEl.textContent = formatCurrency(user.balance, this.settings.currencySymbol);
-    }
-    if (privateAccountEl) {
-      privateAccountEl.textContent = user.accountNumber;
-    }
-    
-    // Sparekonto
-    const savingsAccount = savingsService.getSavingsAccountByUser(user.id);
-    const savingsBalanceEl = document.getElementById('savingsSavingsBalance');
-    const savingsAccountEl = document.getElementById('savingsSavingsAccount');
-    const savingsRateEl = document.getElementById('savingsInterestRate');
-    
-    if (savingsBalanceEl) {
-      savingsBalanceEl.textContent = formatCurrency(savingsAccount?.balance || 0, this.settings.currencySymbol);
-    }
-    if (savingsAccountEl && savingsAccount) {
-      savingsAccountEl.textContent = savingsAccount.accountNumber;
-    }
-    if (savingsRateEl) {
-      const settings = await savingsService.getSettings();
-      savingsRateEl.textContent = settings.savings.annualRate + '%';
-    }
-
-    // Fondskonto
-    const fundAccount = savingsService.getFundAccountByUser(user.id);
-    const fundBalanceEl = document.getElementById('savingsFundBalance');
-    const fundAccountEl = document.getElementById('savingsFundAccount');
-    const fundRateEl = document.getElementById('fundReturnRate');
-    
-    if (fundBalanceEl) {
-      fundBalanceEl.textContent = formatCurrency(fundAccount?.balance || 0, this.settings.currencySymbol);
-    }
-    if (fundAccountEl && fundAccount) {
-      fundAccountEl.textContent = fundAccount.accountNumber;
-    }
-    if (fundRateEl) {
-      const settings = await savingsService.getSettings();
-      fundRateEl.textContent = settings.funds.expectedReturn + '%';
-    }
-
-    // Rente- og avkastningshistorikk
-    const historyContainer = document.getElementById('interestHistory');
-    if (historyContainer) {
-      const savingsTx = (savingsAccount?.transactions || [])
-        .filter(t => t.type === 'interest')
-        .map(t => ({ ...t, source: 'savings' }));
-      const fundTx = (fundAccount?.transactions || [])
-        .filter(t => t.type === 'return' || t.type === 'loss')
-        .map(t => ({ ...t, source: 'fund' }));
-      const combined = [...savingsTx, ...fundTx]
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, 30);
-      if (combined.length === 0) {
-        historyContainer.innerHTML = `<p class="text-gray-500 text-sm">${languageService.t('common.noHistory')}</p>`;
-      } else {
-        const cur = this.settings?.currencySymbol || 'KKr';
-        historyContainer.innerHTML = combined.map(t => {
-          const pos = t.amount >= 0;
-          const date = new Date(t.date).toLocaleDateString('nb-NO');
-          const icon = t.source === 'savings' ? '🏦' : '📈';
-          const label = t.source === 'savings'
-            ? languageService.t('savings.interest')
-            : (t.amount >= 0 ? languageService.t('savings.return') : '📉 ' + languageService.t('savings.return'));
-          const rateStr = (t.rate != null) ? ` (${Number(t.rate).toFixed(1)}% p.a.)` : '';
-          return `
-            <div class="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-              <div class="flex items-center gap-2">
-                <span>${icon}</span>
-                <div>
-                  <p class="text-sm font-medium">${label}${rateStr}</p>
-                  <p class="text-xs text-gray-500">${date}</p>
-                </div>
-              </div>
-              <span class="font-medium ${pos ? 'text-green-600' : 'text-red-600'}">${pos ? '+' : ''}${formatCurrency(t.amount, cur)}</span>
-            </div>`;
-        }).join('');
-      }
-    }
-
-    // Last lån hvis eleven har lån
-    this.loadStudentLoans();
-  }
+  // loadStudentSavings — moved to features/savings/controllers/savingsController.js
 
   /**
    * Last studentens lån - DEPRECATED: Lån vises nå kun i Lån-fanen via loadStudentLoansScreen()
@@ -9999,49 +9690,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     uiManager.showSuccess(languageService.t('msg.allMessagesRead'));
   }
 
-  /**
-   * Vis skattemelding detaljer
-   */
-  async viewTaxStatement(statementId) {
-    const user = authService.getCurrentUser();
-    if (!user) return;
-
-    const inbox = await dataService.getInbox(user.id);
-
-    const statement = inbox.find(m => m.id === statementId);
-    if (!statement || statement.type !== 'tax_statement') return;
-
-    // Marker som lest
-    try {
-      await dataService.markMessageAsRead(statementId, 'inbox');
-    } catch (e) {
-      console.error('Firebase feilet ved markering av skattemelding som lest:', e);
-    }
-    
-    // Vis detaljer i en alert eller modal
-    let details = `📋 SKATTEMELDING\n\n`;
-    details += `Periode: ${statement.period || 'Ukjent'}\n\n`;
-    details += `💰 INNTEKTER:\n`;
-    
-    if (statement.data?.incomes && statement.data.incomes.length > 0) {
-      statement.data.incomes.forEach(inc => {
-        details += `  • ${inc.source}: ${formatCurrency(inc.amount, this.settings.currencySymbol)}\n`;
-      });
-      details += `\n  Total inntekt: ${formatCurrency(statement.data.totalIncome || 0, this.settings.currencySymbol)}\n`;
-    } else {
-      details += `  Ingen registrerte inntekter\n`;
-    }
-    
-    details += `\n🏛️ SKATT:\n`;
-    details += `  Betalt skatt: ${formatCurrency(statement.data?.totalTax || 0, this.settings.currencySymbol)}\n`;
-    
-    if (statement.data?.effectiveRate) {
-      details += `  Effektiv skattesats: ${statement.data.effectiveRate}%\n`;
-    }
-
-    alert(details);
-    await this.loadStudentInbox();
-  }
+  // viewTaxStatement — moved to features/taxes/controllers/taxesController.js
 
   // ==================== SLUTT INNBOKS ====================
 
@@ -10127,180 +9776,12 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     }
   }
 
-  /**
-   * Sett inn på sparekonto
-   */
-  async depositToSavings() {
-    const amount = parseInt(document.getElementById('savingsDepositAmount')?.value);
-    if (!amount || amount <= 0) {
-      uiManager.showError(languageService.t('error.invalidAmount'));
-      return;
-    }
-
-    const user = authService.getCurrentUser();
-    try {
-      await savingsService.depositToSavings(user.id, amount);
-      await authService.refreshCurrentUser();
-      uiManager.showSuccess(languageService.t('msg.transferredToSavings'));
-      document.getElementById('savingsDepositAmount').value = '';
-      await this.loadStudentSavings();
-      await this.updateBalanceDisplay();
-      this.loadStudentAccountsSummary();
-    } catch (error) {
-      uiManager.showError(error.message);
-    }
-  }
-
-  /**
-   * Ta ut fra sparekonto
-   */
-  async withdrawFromSavings() {
-    const amount = parseInt(document.getElementById('savingsWithdrawAmount')?.value);
-    if (!amount || amount <= 0) {
-      uiManager.showError(languageService.t('error.invalidAmount'));
-      return;
-    }
-
-    const user = authService.getCurrentUser();
-    try {
-      await savingsService.withdrawFromSavings(user.id, amount);
-      await authService.refreshCurrentUser();
-      uiManager.showSuccess(languageService.t('msg.transferredFromSavings'));
-      document.getElementById('savingsWithdrawAmount').value = '';
-      await this.loadStudentSavings();
-      await this.updateBalanceDisplay();
-      this.loadStudentAccountsSummary();
-    } catch (error) {
-      uiManager.showError(error.message);
-    }
-  }
-
-  /**
-   * Sett inn på fondskonto
-   */
-  async depositToFund() {
-    const amount = parseInt(document.getElementById('fundDepositAmount')?.value);
-    if (!amount || amount <= 0) {
-      uiManager.showError(languageService.t('error.invalidAmount'));
-      return;
-    }
-
-    const user = authService.getCurrentUser();
-    try {
-      await savingsService.depositToFund(user.id, amount);
-      await authService.refreshCurrentUser();
-      uiManager.showSuccess(languageService.t('msg.transferredToFund'));
-      document.getElementById('fundDepositAmount').value = '';
-      await this.loadStudentSavings();
-      await this.updateBalanceDisplay();
-      this.loadStudentAccountsSummary();
-    } catch (error) {
-      uiManager.showError(error.message);
-    }
-  }
-
-  /**
-   * Ta ut fra fondskonto
-   */
-  async withdrawFromFund() {
-    const amount = parseInt(document.getElementById('fundWithdrawAmount')?.value);
-    if (!amount || amount <= 0) {
-      uiManager.showError(languageService.t('error.invalidAmount'));
-      return;
-    }
-
-    const user = authService.getCurrentUser();
-    try {
-      await savingsService.withdrawFromFund(user.id, amount);
-      await authService.refreshCurrentUser();
-      uiManager.showSuccess(languageService.t('msg.transferredFromFund'));
-      document.getElementById('fundWithdrawAmount').value = '';
-      await this.loadStudentSavings();
-      await this.updateBalanceDisplay();
-      this.loadStudentAccountsSummary();
-    } catch (error) {
-      uiManager.showError(error.message);
-    }
-  }
+  // depositToSavings, withdrawFromSavings, depositToFund, withdrawFromFund
+  // — moved to features/savings/controllers/savingsController.js
 
   // ==================== SKATT FUNKSJONER ====================
 
-  /**
-   * Last skatteoversikt for lærer
-   */
-  async loadTeacherTax() {
-    const balanceEl = document.getElementById('taxAccountBalance');
-    const transactionsEl = document.getElementById('taxTransactionsBody');
-    const taxThisWeekEl = document.getElementById('taxThisWeek');
-    const taxTotalEl = document.getElementById('taxTotal');
-    const taxSpentTotalEl = document.getElementById('taxSpentTotal');
-    
-    // Refresh taxService cache fra Firebase
-    await taxService.loadTaxAccountAsync();
-    
-    // Sørg for at settings er lastet
-    if (!this.settings) {
-      this.settings = await settingsService.getSettings();
-    }
-    const currencySymbol = this.settings?.currencySymbol || 'KKr';
-    
-    if (!(await taxService.isEnabled())) {
-      if (balanceEl) { balanceEl.setAttribute('data-i18n', 'ui.deactivated'); balanceEl.textContent = languageService.t('ui.deactivated'); }
-      if (transactionsEl) transactionsEl.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500 py-8" data-i18n="ui.taxSystemDisabled">${languageService.t('ui.taxSystemDisabled')}</td></tr>`;
-      if (taxThisWeekEl) taxThisWeekEl.textContent = `0 ${currencySymbol}`;
-      if (taxTotalEl) taxTotalEl.textContent = `0 ${currencySymbol}`;
-      if (taxSpentTotalEl) taxSpentTotalEl.textContent = `0 ${currencySymbol}`;
-      return;
-    }
-
-    // Saldo
-    if (balanceEl) {
-      balanceEl.textContent = formatCurrency(taxService.getTaxAccountBalance(), currencySymbol);
-    }
-
-    // Transaksjoner
-    const transactions = taxService.getAllTaxTransactions();
-    
-    // Beregn statistikk
-    const now = new Date();
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
-    const incomeTransactions = transactions.filter(t => t.type === 'income');
-    const expenseTransactions = transactions.filter(t => t.type === 'expense');
-    
-    const thisWeekIncome = incomeTransactions
-      .filter(t => new Date(t.date) >= oneWeekAgo)
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-    
-    const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-    const totalExpense = expenseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-    
-    // Oppdater statistikk-elementer
-    if (taxThisWeekEl) taxThisWeekEl.textContent = formatCurrency(thisWeekIncome, currencySymbol);
-    if (taxTotalEl) taxTotalEl.textContent = formatCurrency(totalIncome, currencySymbol);
-    if (taxSpentTotalEl) taxSpentTotalEl.textContent = formatCurrency(totalExpense, currencySymbol);
-    
-    if (transactionsEl) {
-      if (transactions.length === 0) {
-        transactionsEl.innerHTML = '<tr><td colspan="4" class="text-center text-gray-500 py-8">Ingen skattetransaksjoner</td></tr>';
-      } else {
-        transactionsEl.innerHTML = transactions.slice(0, 50).map(t => {
-          // Bruk fromName direkte fra transaksjonen (Firebase lagrer dette)
-          const senderName = t.fromName || t.fromUserId || '-';
-          return `
-            <tr class="border-b">
-              <td class="py-2 px-2 text-sm">${formatDate(t.date)}</td>
-              <td class="py-2 px-2 text-sm">${escapeHtml(t.description || '')}</td>
-              <td class="py-2 px-2 text-sm">${escapeHtml(senderName)}</td>
-              <td class="py-2 px-2 text-sm ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">
-                ${t.type === 'income' ? '+' : ''}${formatCurrency(Math.abs(t.amount), currencySymbol)}
-              </td>
-            </tr>
-          `;
-        }).join('');
-      }
-    }
-  }
+  // loadTeacherTax — moved to features/taxes/controllers/taxesController.js
 
   /**
    * Last meldinger for lærer med nye kategorier
@@ -10774,23 +10255,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     });
   }
 
-  /**
-   * Utbetal fra skattekonto
-   */
-  async disburseTaxFunds() {
-    const amount = parseInt(prompt(languageService.t('tax.amountToDisburse') || 'Beløp å utbetale:'));
-    if (!amount || amount <= 0) return;
-    
-    const description = prompt(languageService.t('tax.description') || 'Beskrivelse (f.eks. "Klassetur"):') || languageService.t('tax.disbursement') || 'Utbetaling';
-    
-    try {
-      await taxService.disburseTaxFunds(amount, description);
-      uiManager.showSuccess(languageService.t('msg.paidFromTaxAccount'));
-      this.loadTeacherTax();
-    } catch (error) {
-      uiManager.showError(error.message);
-    }
-  }
+  // disburseTaxFunds — moved to features/taxes/controllers/taxesController.js
 
   /**
    * Lagre innstillinger
@@ -11862,12 +11327,22 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
   }
 }
 
+// Slå sammen feature controllers inn på EconSimApp.prototype slik at
+// `this.*`-semantikk og inline `window.econSim.method()`-kall fortsatt virker.
+Object.assign(
+  EconSimApp.prototype,
+  savingsControllerMethods,
+  taxesControllerMethods,
+  classroomControllerMethods,
+  i18nControllerMethods,
+);
+
 // Start applikasjonen når DOM er klar
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     const app = new EconSimApp();
     app.init();
-    
+
     // Gjør app tilgjengelig globalt for debugging
     window.econSim = app;
   });
