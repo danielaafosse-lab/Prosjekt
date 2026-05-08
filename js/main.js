@@ -8,18 +8,46 @@ import { authService } from './features/auth/index.js';
 import { eventBus, EVENTS } from './shared/core/eventBus.js';
 import { uiManager } from './shared/ui/uiManager.js';
 import { transactionService } from './features/transactions/index.js';
-import { jobService } from './features/jobs/index.js';
-import { userService } from './features/users/index.js';
+import {
+  jobService,
+  getPendingJobOffers as getPendingJobOffersUtil,
+} from './features/jobs/index.js';
+import {
+  userService,
+  generateUniqueUsername as generateUniqueUsernameUtil,
+} from './features/users/index.js';
 import { settingsService } from './features/settings/index.js';
-import { taxService } from './features/taxes/index.js';
-import { loanService } from './features/loans/index.js';
-import { businessService } from './features/businesses/index.js';
+import {
+  taxService,
+  computeTaxableRangeAmount,
+} from './features/taxes/index.js';
+import {
+  loanService,
+  getLoanApplicationsForUser as getLoanApplicationsForUserUtil,
+  renderLoanRow as renderLoanRowUtil,
+} from './features/loans/index.js';
+import {
+  businessService,
+  getBusinessWeeklyGrowth,
+  getGrowthIndicator,
+  getJobStatusColor,
+} from './features/businesses/index.js';
 import { savingsService } from './features/savings/index.js';
-import { notificationService } from './features/notifications/index.js';
+import {
+  notificationService,
+  formatMessageForPrint,
+} from './features/notifications/index.js';
 import { schedulerService } from './features/scheduler/index.js';
 import { classroomService } from './features/classroom/index.js';
 import { languageService } from './features/i18n/index.js';
-import { statsService } from './features/stats/index.js';
+import {
+  statsService,
+  getDefaultStatsCount,
+  getLoginPeriodLabel,
+  calculateGiniCoefficient,
+  calculateWeeklyTransactionVolume,
+  categorizeIncome,
+} from './features/stats/index.js';
 import { emailService } from './features/email/index.js';
 import { formatCurrency, formatDate, formatRelativeTime, translateTransactionDescription } from './shared/utils/formatters.js';
 import { escapeHtml, hashPassword } from './shared/utils/helpers.js';
@@ -941,7 +969,7 @@ class EconSimApp {
   async loadLoginStats() {
     try {
       const { keys, stats } = await statsService.getLoginStats(this.loginStatsView, {
-        count: this.getDefaultStatsCount(this.loginStatsView),
+        count: getDefaultStatsCount(this.loginStatsView),
         selectedKey: this.loginStatsFilterKey
       });
 
@@ -963,7 +991,7 @@ class EconSimApp {
         if (keys.length === 1) {
           selectedLabelEl.textContent = `Valgt: ${this.formatLoginPeriodLabel(keys[0], this.loginStatsView)}`;
         } else {
-          selectedLabelEl.textContent = `Viser siste ${keys.length} ${this.getLoginPeriodLabel(this.loginStatsView).toLowerCase()}(r)`;
+          selectedLabelEl.textContent = `Viser siste ${keys.length} ${getLoginPeriodLabel(this.loginStatsView).toLowerCase()}(r)`;
         }
       }
 
@@ -1070,7 +1098,7 @@ class EconSimApp {
       const { countries, regions } = await statsService.getGeoStats(
         this.loginStatsView,
         this.loginStatsFilterKey,
-        this.getDefaultStatsCount(this.loginStatsView)
+        getDefaultStatsCount(this.loginStatsView)
       );
 
       // Vis land
@@ -1154,7 +1182,7 @@ class EconSimApp {
           </div>
           ${classroom ? `
           <div class="text-center px-4">
-            <p class="text-xs text-gray-500">Innlogginger (${this.getLoginPeriodLabel(this.loginStatsView).toLowerCase()})</p>
+            <p class="text-xs text-gray-500">Innlogginger (${getLoginPeriodLabel(this.loginStatsView).toLowerCase()})</p>
             <p class="text-sm">
               <span class="text-green-600 font-medium" title="Lærer">${loginStats.teachers}</span>
               <span class="text-gray-400">/</span>
@@ -2513,7 +2541,7 @@ class EconSimApp {
     if (!badge || !user) return;
 
     // Tell KUN ventende jobbtilbud (direkte ansettelser fra bedriftseier/lærer)
-    const jobOffers = await this.getPendingJobOffers(user.id) || [];
+    const jobOffers = await getPendingJobOffersUtil(user.id, { dataService, classroomService, authService }) || [];
 
     const totalNotifications = jobOffers.length;
     
@@ -2969,32 +2997,6 @@ class EconSimApp {
   }
 
   /**
-   * Returnerer standard antall perioder for visning
-   */
-  getDefaultStatsCount(view) {
-    const defaultCount = {
-      day: 7,
-      week: 8,
-      month: 12,
-      year: 5
-    };
-    return defaultCount[view] || 7;
-  }
-
-  /**
-   * Human-readable navn på periode
-   */
-  getLoginPeriodLabel(view) {
-    const labels = {
-      day: 'Dag',
-      week: 'Uke',
-      month: 'Måned',
-      year: 'År'
-    };
-    return labels[view] || 'Periode';
-  }
-
-  /**
    * Formater periodenøkkel for visning i UI/graf
    */
   formatLoginPeriodLabel(key, view) {
@@ -3054,7 +3056,7 @@ class EconSimApp {
 
     const periodNameEl = document.getElementById('statsPeriodPickerLabel');
     if (periodNameEl) {
-      periodNameEl.textContent = this.getLoginPeriodLabel(this.loginStatsView);
+      periodNameEl.textContent = getLoginPeriodLabel(this.loginStatsView);
     }
 
     // Hint med siste tilgjengelige perioder
@@ -3062,7 +3064,7 @@ class EconSimApp {
 
     // Fyll dropdown for uke/måned/år
     if (select && this.loginStatsView !== 'day') {
-      select.innerHTML = `<option value="">Velg ${this.getLoginPeriodLabel(this.loginStatsView).toLowerCase()}...</option>` +
+      select.innerHTML = `<option value="">Velg ${getLoginPeriodLabel(this.loginStatsView).toLowerCase()}...</option>` +
         availableKeys.map(key => `<option value="${key}">${this.formatLoginPeriodLabel(key, this.loginStatsView)}</option>`).join('');
 
       if (this.loginStatsFilterKey) {
@@ -4684,13 +4686,6 @@ class EconSimApp {
     return { b1Max, b2Max, b2Rate, b3Rate };
   }
 
-  computeTaxableRangeAmount(income, minInclusive, maxInclusive = null) {
-    if (!Number.isFinite(income) || income < minInclusive) return 0;
-    const upper = maxInclusive === null ? income : Math.min(income, maxInclusive);
-    if (upper < minInclusive) return 0;
-    return upper - minInclusive + 1;
-  }
-
   updateTaxExamplePreview() {
     const exampleEl = document.getElementById('taxExamplePreview');
     if (!exampleEl) return;
@@ -4707,8 +4702,8 @@ class EconSimApp {
     }
 
     const exampleIncome = 3000;
-    const taxableInBracket2 = this.computeTaxableRangeAmount(exampleIncome, b1Max + 1, b2Max);
-    const taxableInBracket3 = this.computeTaxableRangeAmount(exampleIncome, b2Max + 1, null);
+    const taxableInBracket2 = computeTaxableRangeAmount(exampleIncome, b1Max + 1, b2Max);
+    const taxableInBracket3 = computeTaxableRangeAmount(exampleIncome, b2Max + 1, null);
     const taxInBracket2 = Math.floor(taxableInBracket2 * (b2Rate / 100));
     const taxInBracket3 = Math.floor(taxableInBracket3 * (b3Rate / 100));
     const totalTax = taxInBracket2 + taxInBracket3;
@@ -5147,7 +5142,7 @@ class EconSimApp {
       if (studentLoans.length === 0) {
         containerStudents.innerHTML = `<tr><td colspan="5" class="text-center text-gray-500 py-8">${languageService.t('teacher.noStudentLoans')}</td></tr>`;
       } else {
-        containerStudents.innerHTML = studentLoans.map(loan => this.renderLoanRow(loan, currencySymbol)).join('');
+        containerStudents.innerHTML = studentLoans.map(loan => renderLoanRowUtil(loan, currencySymbol, { dataService, businessService, languageService })).join('');
       }
     }
     
@@ -5156,35 +5151,9 @@ class EconSimApp {
       if (businessLoans.length === 0) {
         containerBusinesses.innerHTML = `<tr><td colspan="5" class="text-center text-gray-500 py-8">${languageService.t('teacher.noBusinessLoans')}</td></tr>`;
       } else {
-        containerBusinesses.innerHTML = businessLoans.map(loan => this.renderLoanRow(loan, currencySymbol)).join('');
+        containerBusinesses.innerHTML = businessLoans.map(loan => renderLoanRowUtil(loan, currencySymbol, { dataService, businessService, languageService })).join('');
       }
     }
-  }
-  
-  /**
-   * Render en låne-rad
-   */
-  renderLoanRow(loan, currencySymbol) {
-    const borrower = loan.borrowerType === 'student' 
-      ? dataService.getUserById(loan.borrowerId)
-      : businessService.getBusinessById(loan.borrowerId);
-    const borrowerName = borrower ? (borrower.name || languageService.t('common.unknown')) : languageService.t('common.unknown');
-    const statusClass = loan.status === 'active' ? 'bg-green-100 text-green-800' : 
-                       loan.status === 'overdue' ? 'bg-red-100 text-red-800' : 
-                       'bg-gray-100 text-gray-800';
-    const statusText = loan.status === 'active' ? languageService.t('common.active') : 
-                      loan.status === 'overdue' ? languageService.t('loans.overdue') : 
-                      loan.status === 'paid_off' ? languageService.t('loans.paidOff') : loan.status;
-
-    return `
-      <tr class="border-b hover:bg-gray-50">
-        <td class="py-3 px-2">${escapeHtml(borrowerName)}</td>
-        <td class="py-3 px-2">${formatCurrency(loan.principalAmount, currencySymbol)}</td>
-        <td class="py-3 px-2">${formatCurrency(loan.remainingBalance, currencySymbol)}</td>
-        <td class="py-3 px-2">${loan.interestRate}%</td>
-        <td class="py-3 px-2"><span class="px-2 py-1 rounded text-xs ${statusClass}">${statusText}</span></td>
-      </tr>
-    `;
   }
   
   /**
@@ -5652,64 +5621,6 @@ Du kan søke på nytt med et annet beløp eller formål.`;
   // ==================== BEDRIFT FUNKSJONER ====================
 
   /**
-   * Beregn prosentvis endring i bedriftssaldo siste 7 dager
-   */
-  getBusinessWeeklyGrowth(business) {
-    const now = Date.now();
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    const transactions = Array.isArray(business?.transactions) ? business.transactions : [];
-
-    const weeklyNetChange = transactions.reduce((sum, tx) => {
-      const txDate = tx?.date || tx?.timestamp || tx?.createdAt;
-      if (!txDate) return sum;
-      const txTime = new Date(txDate).getTime();
-      if (Number.isNaN(txTime) || (now - txTime) > sevenDaysMs) return sum;
-
-      const amount = Math.abs(Number(tx.amount) || 0);
-      const sign = tx.type === 'expense' || tx.type === 'withdrawal' || tx.type === 'loss' ? -1 : 1;
-      return sum + (sign * amount);
-    }, 0);
-
-    const currentBalance = Number(business?.balance) || 0;
-    const previousBalance = currentBalance - weeklyNetChange;
-
-    let growthPct = 0;
-    if (Math.abs(previousBalance) >= 1) {
-      growthPct = (weeklyNetChange / previousBalance) * 100;
-    } else if (Math.abs(weeklyNetChange) >= 1) {
-      growthPct = weeklyNetChange > 0 ? 100 : -100;
-    }
-
-    // Unngå ekstreme utslag i UI-rangering
-    growthPct = Math.max(-300, Math.min(300, growthPct));
-
-    return {
-      growthPct,
-      weeklyNetChange,
-      previousBalance
-    };
-  }
-
-  /**
-   * Returner pil + fargeklasse for vekstindikator
-   */
-  getGrowthIndicator(growthPct) {
-    if (growthPct >= 2) {
-      return { arrow: '⬆️', className: 'text-green-600', label: 'Sterk vekst' };
-    }
-    if (growthPct >= 0.5) {
-      return { arrow: '↗️', className: 'text-cyan-600', label: 'Mild vekst' };
-    }
-    if (growthPct <= -2) {
-      return { arrow: '⬇️', className: 'text-red-600', label: 'Sterk nedgang' };
-    }
-    if (growthPct <= -0.5) {
-      return { arrow: '↘️', className: 'text-orange-600', label: 'Mild nedgang' };
-    }
-    return { arrow: '➡️', className: 'text-yellow-600', label: 'Flat utvikling' };
-  }
-
-  /**
    * Last bedrifter for lærer
    */
   async loadTeacherBusinesses() {
@@ -5785,7 +5696,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
       .getAllBusinesses()
       .filter(b => b.status !== 'pending')
       .map(b => {
-        const growth = this.getBusinessWeeklyGrowth(b);
+        const growth = getBusinessWeeklyGrowth(b);
         return { ...b, _growth: growth };
       })
       .sort((a, b) => b._growth.growthPct - a._growth.growthPct);
@@ -5798,7 +5709,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
           const statusClass = b.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
           const statusText = b.status === 'active' ? languageService.t('common.active') : b.status;
           const { growthPct } = b._growth;
-          const indicator = this.getGrowthIndicator(growthPct);
+          const indicator = getGrowthIndicator(growthPct);
           const growthText = `${growthPct >= 0 ? '+' : ''}${growthPct.toFixed(1)}%`;
           const logoDisplay = b.logo 
             ? `<img src="${b.logo}" alt="${escapeHtml(b.name)}" class="w-6 h-6 rounded object-cover inline-block mr-2">`
@@ -6057,7 +5968,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
     const ownershipOffers = businessService.getPendingOffersForBuyer(user.id);
 
     // Hent jobbtilbud (direkte ansettelser)
-    const jobOffers = await this.getPendingJobOffers(user.id);
+    const jobOffers = await getPendingJobOffersUtil(user.id, { dataService, classroomService, authService });
 
     const allOffers = [
       ...ownershipOffers.map(o => ({ ...o, offerType: 'ownership' })),
@@ -6124,20 +6035,6 @@ Du kan søke på nytt med et annet beløp eller formål.`;
   }
 
   /**
-   * Hent ventende jobbtilbud for bruker
-   */
-  async getPendingJobOffers(userId) {
-    const offers = await dataService.getJobOffers();
-    const classroomId = classroomService.getClassroomByTeacher(authService.getCurrentUser()?.id)?.id || 
-                        authService.getCurrentUser()?.classroomId;
-    return offers.filter(o => 
-      o.employeeId === userId && 
-      o.status === 'pending' &&
-      o.classroomId === classroomId
-    );
-  }
-
-  /**
    * Last jobbtilbud for jobbskjermen
    */
   async loadJobOffers() {
@@ -6147,7 +6044,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
 
     if (!section || !list) return;
 
-    const jobOffers = await this.getPendingJobOffers(user.id);
+    const jobOffers = await getPendingJobOffersUtil(user.id, { dataService, classroomService, authService });
     
     if (jobOffers.length === 0) {
       section.classList.add('hidden');
@@ -6564,7 +6461,7 @@ Du kan søke på nytt med et annet beløp eller formål.`;
     }
     
     return `
-      <div class="bg-gray-50 p-3 rounded mb-2 border-l-4 ${this.getJobStatusColor(job.status)}">
+      <div class="bg-gray-50 p-3 rounded mb-2 border-l-4 ${getJobStatusColor(job.status)}">
         <div class="flex justify-between items-start">
           <div class="flex-1">
             <p class="font-medium">${escapeHtml(job.title)}${jobTypeBadge}</p>
@@ -6577,19 +6474,6 @@ Du kan søke på nytt med et annet beløp eller formål.`;
         ${applicationsHtml}
       </div>
     `;
-  }
-  
-  /**
-   * Hent fargeklasse for jobbstatus
-   */
-  getJobStatusColor(status) {
-    switch (status) {
-      case 'open': return 'border-blue-500';
-      case 'offered': return 'border-amber-500';
-      case 'active': return 'border-green-500';
-      case 'completed': return 'border-gray-400';
-      default: return 'border-gray-300';
-    }
   }
   
   /**
@@ -7128,7 +7012,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
 
     // Last lånesøknader
     if (applicationsContainer) {
-      const applications = await this.getLoanApplicationsForUser(business.id);
+      const applications = await getLoanApplicationsForUserUtil(business.id, dataService);
       if (applications.length === 0) {
         applicationsContainer.innerHTML = `<p class="text-gray-500 text-sm">${languageService.t('loans.noApplicationsSent')}</p>`;
       } else {
@@ -9289,7 +9173,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
 
     // Last lånesøknader
     if (applicationsContainer) {
-      const applications = await this.getLoanApplicationsForUser(user.id);
+      const applications = await getLoanApplicationsForUserUtil(user.id, dataService);
       if (applications.length === 0) {
         applicationsContainer.innerHTML = `<p class="text-gray-500 text-sm">${languageService.t('loans.noApplicationsSent')}</p>`;
       } else {
@@ -9313,13 +9197,6 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
         }).join('');
       }
     }
-  }
-
-  /**
-   * Hent lånesøknader for bruker (fra Firebase)
-   */
-  async getLoanApplicationsForUser(userId) {
-    return await dataService.getLoanApplicationsForUser(userId);
   }
 
   /**
@@ -9978,7 +9855,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     const content = document.getElementById('messageViewContent').textContent;
 
     // Konverter innhold til HTML-format (bevar linjeskift)
-    const formattedContent = this.formatMessageForPrint(content);
+    const formattedContent = formatMessageForPrint(content);
 
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
@@ -10080,27 +9957,6 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     `);
     printWindow.document.close();
     printWindow.print();
-  }
-
-  /**
-   * Formater meldingsinnhold for utskrift
-   */
-  formatMessageForPrint(content) {
-    if (!content) return '';
-
-    // Escape HTML først
-    let formatted = escapeHtml(content);
-
-    // Konverter linjer med ═══ til separatorer
-    formatted = formatted.replace(/═{3,}/g, '<div class="separator"></div>');
-
-    // Konverter linjer med --- til separatorer
-    formatted = formatted.replace(/-{3,}/g, '<div class="separator"></div>');
-
-    // Uthev linjer som slutter med kolon (header-linjer)
-    formatted = formatted.replace(/^(.+:)\s*$/gm, '<span class="header-line">$1</span>');
-
-    return formatted;
   }
 
   /**
@@ -11151,7 +11007,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
       : 0;
     
     // Beregn Gini-koeffisient
-    const gini = this.calculateGiniCoefficient(sortedBalances);
+    const gini = calculateGiniCoefficient(sortedBalances);
     
     // Oppdater UI-elementer
     document.getElementById('statsTotalMoney').textContent = formatCurrency(totalMoney, currencySymbol);
@@ -11197,24 +11053,6 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     
     // Tegn grafer
     this.renderStatisticsCharts(students, transactions, taxData);
-  }
-
-  /**
-   * Beregn Gini-koeffisient (ulikhets-mål)
-   */
-  calculateGiniCoefficient(sortedValues) {
-    const n = sortedValues.length;
-    if (n === 0) return 0;
-    
-    const sum = sortedValues.reduce((a, b) => a + b, 0);
-    if (sum === 0) return 0;
-    
-    let giniSum = 0;
-    for (let i = 0; i < n; i++) {
-      giniSum += (2 * (i + 1) - n - 1) * sortedValues[i];
-    }
-    
-    return giniSum / (n * sum);
   }
 
   /**
@@ -11302,7 +11140,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     // 2. Transaksjonsvolum per uke (Line Chart)
     const volumeCtx = document.getElementById('volumeChart')?.getContext('2d');
     if (volumeCtx) {
-      const weeklyVolume = this.calculateWeeklyTransactionVolume(transactions);
+      const weeklyVolume = calculateWeeklyTransactionVolume(transactions);
       this._statsCharts.volume = new Chart(volumeCtx, {
         type: 'line',
         data: {
@@ -11327,7 +11165,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     // 3. Inntektsfordeling (Pie Chart)
     const incomeCtx = document.getElementById('incomeChart')?.getContext('2d');
     if (incomeCtx) {
-      const incomeTypes = this.categorizeIncome(transactions);
+      const incomeTypes = categorizeIncome(transactions);
       this._statsCharts.income = new Chart(incomeCtx, {
         type: 'doughnut',
         data: {
@@ -11375,69 +11213,6 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
         }
       });
     }
-  }
-
-  /**
-   * Beregn ukentlig transaksjonsvolum
-   */
-  calculateWeeklyTransactionVolume(transactions) {
-    const weekMap = new Map();
-    
-    transactions.forEach(t => {
-      const date = new Date(t.timestamp || t.createdAt);
-      const weekNum = this.getWeekNumber(date);
-      const key = `${date.getFullYear()}-${weekNum}`;
-      weekMap.set(key, (weekMap.get(key) || 0) + (t.amount || 0));
-    });
-    
-    const weeks = Array.from(weekMap.entries())
-      .map(([key, volume]) => ({ week: key.split('-')[1], volume }))
-      .slice(-8);
-    
-    return weeks.length > 0 ? weeks : [{ week: 1, volume: 0 }];
-  }
-
-  /**
-   * Hent ukenummer fra dato
-   */
-  getWeekNumber(date) {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  }
-
-  /**
-   * Kategoriser inntekter
-   */
-  categorizeIncome(transactions) {
-    const categories = {
-      'Lønn': 0,
-      'Overføringer': 0,
-      'Bedrift': 0,
-      'Annet': 0
-    };
-    
-    transactions.forEach(t => {
-      if (t.amount > 0 && t.toId) {
-        const desc = (t.description || '').toLowerCase();
-        if (desc.includes('lønn') || desc.includes('salary')) {
-          categories['Lønn'] += t.amount;
-        } else if (desc.includes('overføring') || desc.includes('transfer')) {
-          categories['Overføringer'] += t.amount;
-        } else if (desc.includes('bedrift') || desc.includes('business')) {
-          categories['Bedrift'] += t.amount;
-        } else {
-          categories['Annet'] += t.amount;
-        }
-      }
-    });
-    
-    return {
-      labels: Object.keys(categories),
-      values: Object.values(categories)
-    };
   }
 
   /**
@@ -11672,48 +11447,6 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
   }
 
   /**
-   * Konverter norske tegn til ASCII-vennlige alternativer
-   * æ → ae, ø → oe, å → aa
-   */
-  normalizeNorwegianChars(str) {
-    return str
-      .replace(/æ/gi, 'ae')
-      .replace(/ø/gi, 'oe')
-      .replace(/å/gi, 'aa');
-  }
-
-  /**
-   * Generer unikt brukernavn basert på lærer og elev navn
-   * Format: [2 første bokstaver lærer fornavn][2 første elev fornavn][2 første elev etternavn]
-   * Eksempel: Daniel + Anne Odda = daanod
-   */
-  async generateUniqueUsername(teacherName, studentFirstName, studentLastName) {
-    // Normaliser norske tegn først
-    const normalizedTeacher = this.normalizeNorwegianChars(teacherName);
-    const normalizedFirst = this.normalizeNorwegianChars(studentFirstName);
-    const normalizedLast = this.normalizeNorwegianChars(studentLastName);
-    
-    // Hent de to første bokstavene fra hvert navn (lowercase)
-    const teacherPrefix = normalizedTeacher.substring(0, 2).toLowerCase();
-    const firstNamePart = normalizedFirst.substring(0, 2).toLowerCase();
-    const lastNamePart = normalizedLast.substring(0, 2).toLowerCase();
-    
-    const baseUsername = `${teacherPrefix}${firstNamePart}${lastNamePart}`;
-    
-    // Sjekk om brukernavnet allerede eksisterer
-    const users = await dataService.getUsers();
-    let username = baseUsername;
-    let counter = 1;
-    
-    while (users.some(u => u.username === username)) {
-      username = `${baseUsername}${counter.toString().padStart(2, '0')}`;
-      counter++;
-    }
-    
-    return username;
-  }
-
-  /**
    * Oppdater brukernavn-feltet når fornavn/etternavn endres
    */
   async updateGeneratedUsername() {
@@ -11730,7 +11463,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
     if (!currentUser) return;
     
     const teacherName = currentUser.name.split(' ')[0]; // Bare fornavn
-    const username = await this.generateUniqueUsername(teacherName, firstName, lastName);
+    const username = await generateUniqueUsernameUtil(teacherName, firstName, lastName, dataService);
     
     if (usernameField) {
       usernameField.value = username;
@@ -11773,7 +11506,7 @@ ${languageService.t('jobs.signedDigitally')} ${dateStr}
 
       // Generer unikt brukernavn og tilfeldig passord
       const teacherName = currentUser.name.split(' ')[0];
-      const username = await this.generateUniqueUsername(teacherName, firstName, lastName);
+      const username = await generateUniqueUsernameUtil(teacherName, firstName, lastName, dataService);
       const password = emailService.generatePassword();
 
       // Fullt navn
