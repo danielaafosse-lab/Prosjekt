@@ -3171,7 +3171,16 @@ class LanguageService {
 
   addObserver(callback) { this.observers.push(callback); }
   removeObserver(callback) { this.observers = this.observers.filter(o => o !== callback); }
-  notifyObservers() { this.observers.forEach(cb => { try { cb(this.currentLanguage); } catch(e) {} }); }
+  notifyObservers() {
+    this.observers.forEach(cb => {
+      try {
+        cb(this.currentLanguage);
+      } catch (e) {
+        // Observer-feil skal ikke ta ned andre observers — logg og fortsett.
+        console.error('languageService observer threw:', e);
+      }
+    });
+  }
 }
 
 const languageService = new LanguageService();

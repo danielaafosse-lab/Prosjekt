@@ -6,6 +6,8 @@
 |---|---|
 | AI-assistent som skal endre kode | Denne filen, deretter [CLAUDE.md](CLAUDE.md) for korte konvensjoner |
 | Ny utvikler | Denne filen, deretter [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
+| Drift / produksjons-feilsøking | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
+| Testing / QA | [docs/TESTING.md](docs/TESTING.md) |
 | Sluttbruker (lærer, elev) | [docs/BRUKSANVISNING.md](docs/BRUKSANVISNING.md) |
 | Versjonshistorikk | [CHANGELOG.md](CHANGELOG.md) |
 
@@ -528,7 +530,34 @@ Deployer hosting + firestore (rules + indexes) + functions.
 
 ## 14. Fallgruver
 
-1. **Tailwind output.css** — klasser som ikke finnes i `css/output.css` virker ikke. Verifiser med Grep før bruk. Etter endring i HTML/JS: kjør `npm run build:css`.
+### 14.0 Field-navngivnings-invarianter (kritisk for AI)
+
+Disse feltnavnene brukes konsistent. Endring av dem bryter ting stille — det er ingen runtime-validering. Verifiser med grep før refactor.
+
+| Type | Feltnavn | Ikke skriv |
+|---|---|---|
+| User | `accountNumber` (3-sifret string, f.eks. `'101'`) | `accountId`, `account_no` |
+| User | `passwordHash` (SHA-256 hex) | `password`, `pwHash` |
+| Business | `owners[{ userId, percentage, costBasis }]` | `ownership`, `ownerId` |
+| Business | `employees[{ userId, salary, title, startDate }]` | `staff`, `workers` |
+| Business | `accountNumber` (501–999) | `id` (det er `id`-feltet på businesses-doc, men kontonummeret er `accountNumber`) |
+| JobApplication | `applicantId` | `studentId`, `userId` (`userId` finnes på andre typer, kan forvirre) |
+| Transaction | `from` og `to` (3-sifrede accountNumbers, ikke userIds) | `senderId`, `recipientId` |
+| Transaction | `type` (string: 'transfer', 'salary', 'tax', 'interest', 'dividend', 'loan_payment') | enum-tall |
+| Loan | `borrowerId` (userId) | `userId` |
+| Loan | `principal`, `remainingBalance` (forskjellige!) | `amount` (uklart hvilken) |
+| Notification | `userId` (mottaker) | `recipientId`, `to` |
+| Classroom | `teacherId` (én lærer per klasserom per nå) | `teachers[]` |
+
+Virtuelle kontoer:
+- `'000'` — sentralbank (utømmelig)
+- `'001'` — skattekasse
+
+Disse er IKKE brukerobjekter. Ikke prøv å lese dem som `User`. Spesialcase i `firebaseService.js`.
+
+### 14.1 Tailwind output.css
+
+Klasser som ikke finnes i `css/output.css` virker ikke. Verifiser med Grep før bruk. Etter endring i HTML/JS: kjør `npm run build:css`.
    - Bekreftet tilgjengelig: `hover:bg-gray-200`
    - Ikke tilgjengelig: `hover:bg-gray-100`
    - For uvanlige farger: bruk inline `style=`
@@ -556,6 +585,20 @@ Deployer hosting + firestore (rules + indexes) + functions.
 9. **Inline event-handlers (`onclick="..."`)** — main.js har mange. Ved omarrangering av kode: husk at de refererer til `window.econSim.metode(...)`, så metoden må eksistere på den globale `econSim`-instansen.
 
 10. **Duplicate class methods** — JS klasser kan ikke overload. Hvis to metoder har samme navn, vinner den siste. Sjekk med `grep -n` før refactor.
+
+### 14.2 Sletting og kaskade-effekter
+
+EconSim har **ingen referanse-integritet** i Firestore. Når noe slettes, må kall-stedene rydde opp manuelt — ellers blir det "orphaned" data som forvirrer UI.
+
+| Slettet objekt | Hva som SKJER (automatisk) | Hva som IKKE rydes (potensielle orphans) |
+|---|---|---|
+| Klasserom | `transactions`, `jobs`, og brukere knyttet til klasserommet slettes via `deleteClassroom()` | `applications`, `loans`, `savings`, `notifications`-subcollections kan henge igjen — sjekk og slett manuelt |
+| Bruker (elev) | `savings`, `funds`, og `loans` for brukeren slettes | `applications` med `applicantId === userId` blir orphan; `notifications` med `userId === userId` blir orphan; `Business.owners[]` og `Business.employees[]` referanser ryddes IKKE |
+| Bruker (lærer) | Klasserommet de eier blir uten lærer | Ingen automatisk overføring; lærer-felt på classroom blir feil. **Ikke slett en lærer som eier et aktivt klasserom uten å overføre først.** |
+| Bedrift | `Business`-doc slettes, transaksjoner med bedrift som from/to consultes ikke | Ansatte er fortsatt referert i `User`-objektet via lønn-jobben; jobs som peker til business får "orphan" `businessId` |
+| Jobb | Jobb-dokumentet slettes | Aktive `applications` for jobben blir orphan; `assignedTo`-bruker har fortsatt jobben i sin profil |
+
+**Regel:** Før du legger til en sletting i koden, kartlegg ALL referanser til det slettede objektet og rydd dem eksplisitt.
 
 ---
 

@@ -590,7 +590,7 @@ class ClassroomService {
         if (!classroom) throw new Error(languageService.t('error.classroomNotFound'));
 
         switch (type) {
-            case 'student':
+            case 'student': {
                 // Initialiser nextStudentNumber hvis den mangler (for eldre klasserom)
                 if (classroom.nextStudentNumber === undefined || classroom.nextStudentNumber === null) {
                     // Finn høyeste eksisterende studentnummer i klasserommet
@@ -633,6 +633,7 @@ class ClassroomService {
 
                 console.log(`🔢 Genererte kontonummer ${studentNumber}, neste er ${classroom.nextStudentNumber}`);
                 return studentNumber;
+            }
 
             case 'business':
                 return this.getNextBusinessAccountNumber(classroomId);

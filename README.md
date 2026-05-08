@@ -31,12 +31,15 @@ EconSim kjører som en akselerert simulering der **1 uke i appen tilsvarer 1 må
 
 | Dokument | For hvem |
 |----------|----------|
+| [MANIFEST.md](MANIFEST.md) | AI / utviklere — samlet referanse |
 | [docs/BRUKSANVISNING.md](docs/BRUKSANVISNING.md) | Lærere og elever (sluttbrukere) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Utviklere og AI-assistenter — systemoversikt |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Dypdykk i arkitektur |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Lokalt utviklingsoppsett |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Hvordan deploye til Firebase |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Drift, overvåkning, feilsøking i produksjon |
+| [docs/TESTING.md](docs/TESTING.md) | Test-strategi, dekning, manuelle QA-rutiner |
 | [CHANGELOG.md](CHANGELOG.md) | Versjonshistorikk |
-| [CLAUDE.md](CLAUDE.md) | AI-assistent prosjektguide |
+| [CLAUDE.md](CLAUDE.md) | AI-konvensjoner (kort) |
 
 ---
 

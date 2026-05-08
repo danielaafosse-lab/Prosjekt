@@ -2495,8 +2495,8 @@ class EconSimApp {
       }
 
       // Status badge
-      let statusBadge = '';
-      let bgClass = '';
+      let statusBadge;
+      let bgClass;
       switch (app.status) {
         case 'pending':
           statusBadge = `<span class="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded">⏳ ${languageService.t('ui.statusPending')}</span>`;
@@ -2566,7 +2566,7 @@ class EconSimApp {
 
     // For bedriftsjobber, sjekk i jobApplications (synkront fra cache)
     // For statens jobber, sjekk i applications cache
-    let hasApplied = false;
+    let hasApplied;
     if (job.isBusinessJob) {
       // Bruk synkron cache-tilgang siden denne kalles fra render
       const businessApplications = dataService.cache?.businessJobApplications || [];
