@@ -39,6 +39,7 @@ import { notificationsControllerMethods } from './features/notifications/control
 import { statsControllerMethods } from './features/stats/controllers/statsController.js';
 import { jobsControllerMethods } from './features/jobs/controllers/jobsController.js';
 import { businessesControllerMethods } from './features/businesses/controllers/businessesController.js';
+import { backupsController } from './features/backups/index.js';
 
 // Eksporter språkfunksjon globalt for HTML onclick
 window.setLanguage = (lang) => {
@@ -63,6 +64,8 @@ class EconSimApp {
     this.loginStatsFilterKey = null;
     this.currentTeacherScreen = 'overview';
     this.currentStudentScreen = 'overview';
+    // Backups feature controller (superadmin)
+    this.backupsController = backupsController;
   }
 
   /**
@@ -799,6 +802,13 @@ class EconSimApp {
 
     // Last klasserom-liste
     await this.loadAllClassrooms();
+
+    // Last backups (superadmin-only seksjon)
+    try {
+      await this.backupsController.render();
+    } catch (err) {
+      console.warn('Backups-render feilet:', err);
+    }
   }
 
   // loadSuperadminStats, loadLoginStats, switchLoginStatsView, loadGeoStats —

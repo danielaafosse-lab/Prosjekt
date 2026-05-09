@@ -1271,6 +1271,23 @@
                 </div>
             </div>
 
+            <!-- Backups (superadmin) -->
+            <div class="bg-white rounded-lg shadow p-6 mb-6" id="superadminBackupsSection">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-semibold text-lg">📦 <span data-i18n="backups.title">Backups</span></h3>
+                    <button onclick="window.econSim.backupsController.render()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">
+                        🔄 <span data-i18n="btn.refresh">Oppdater</span>
+                    </button>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    <span data-i18n="backups.intro">Automatiske backups tas hver gang en klasserom-reset utføres. Beholdes i 90 dager.</span>
+                </p>
+                <div id="backupsList">
+                    <p class="text-gray-500 italic" data-i18n="backups.empty">Ingen backups.</p>
+                </div>
+            </div>
+
         </div>
 
         <!-- Teacher Dashboard -->

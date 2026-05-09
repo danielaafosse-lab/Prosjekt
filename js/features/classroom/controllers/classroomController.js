@@ -33,18 +33,31 @@ export const classroomControllerMethods = {
       const teacher = users.find(u => u.id === classroom.teacherId);
       const isDemoClassroom = classroom.id === 'demo-classroom' || classroom.teacherId === 't1';
 
+      const isLocked = classroom.locked === true;
+      const lockBadge = isLocked
+        ? `<span class="inline-block bg-yellow-200 text-yellow-800 text-xs px-2 py-0.5 rounded">🔒 ${languageService.t('lock.locked') || 'Låst'}</span>`
+        : '';
+      const lockButton = isDemoClassroom
+        ? ''
+        : (isLocked
+            ? `<button onclick="window.econSim.backupsController.toggleLock('${classroom.id}', true)" class="text-green-600 hover:text-green-800 text-sm" title="Lås opp klasserom">🔓 ${languageService.t('lock.unlockClassroom') || 'Lås opp'}</button>`
+            : `<button onclick="window.econSim.backupsController.toggleLock('${classroom.id}', false)" class="text-yellow-600 hover:text-yellow-800 text-sm" title="Lås klasserom">🔒 ${languageService.t('lock.lockClassroom') || 'Lås'}</button>`);
+
       return `
-        <div class="bg-gray-50 p-4 rounded-lg">
+        <div class="bg-gray-50 p-4 rounded-lg ${isLocked ? 'opacity-75' : ''}">
           <div class="flex justify-between items-start">
             <div>
-              <p class="font-medium text-lg">${escapeHtml(classroom.className)}</p>
+              <p class="font-medium text-lg">${escapeHtml(classroom.className)} ${lockBadge}</p>
               <p class="text-sm text-gray-500">${languageService.t('demo.teacher')}: ${teacher ? escapeHtml(teacher.name) : languageService.t('common.unknown')}</p>
               <p class="text-sm text-gray-500">${languageService.t('ui.currency')}: ${classroom.currencySymbol} • ${languageService.t('ui.startingCapital')}: ${classroom.startingBalance}</p>
             </div>
             <div class="text-right flex flex-col items-end gap-2">
               ${isDemoClassroom
                 ? '<span class="text-xs text-gray-400">Beskyttet demo-klasserom</span>'
-                : `<button onclick="window.econSim.deleteClassroomAsSuperadmin('${classroom.id}')" class="text-red-600 hover:text-red-800 text-sm" title="Slett klasserom">🗑️ Slett</button>`}
+                : `<div class="flex gap-2">
+                     ${lockButton}
+                     <button onclick="window.econSim.deleteClassroomAsSuperadmin('${classroom.id}')" class="text-red-600 hover:text-red-800 text-sm" title="Slett klasserom">🗑️ Slett</button>
+                   </div>`}
               <p class="text-2xl font-bold text-blue-600">${students.length}</p>
               <p class="text-xs text-gray-500">${languageService.t('roles.students')}</p>
             </div>
