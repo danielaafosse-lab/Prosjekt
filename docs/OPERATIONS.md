@@ -25,7 +25,8 @@ Denne filen forklarer hvordan EconSim drives, overvåkes og feilsøkes i produks
 - **Firebase-prosjekt-ID:** `econsim-5723c`
 - **Console:** https://console.firebase.google.com/project/econsim-5723c/overview
 - **Firestore-database:** Default database, EU-multiregion (`europe-west`)
-- **Cloud Functions-region:** `us-central1` (default)
+- **Cloud Functions-region:** `europe-west1` for nye auth/reset/restore/lock/backup-funksjoner (colocated med Firestore for ~100ms lavere latency). Legacy email/scheduler-funksjoner kjører fortsatt i `us-central1`.
+- **Min instances:** `authenticateUser` har `minInstances: 1` for å eliminere cold start (login holdes ~950ms warm i stedet for ~6.7s cold). Koster ~$2-3/mnd. Endre i `functions/index.js` om kostnaden ikke lenger er ønskelig.
 - **Hosting-region:** Global CDN
 
 Innloggingstilgang krever Firebase-prosjekt-rollen `Owner` eller `Editor`. Kun prosjekt-eier (Daniel Alexander Andersen Fosse) har det per nå.

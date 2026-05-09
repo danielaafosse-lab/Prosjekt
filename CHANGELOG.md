@@ -47,6 +47,16 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), og pr
 - 2 klasserom fikk `locked: false` lagt til
 - `users/superadmin`-dokumentet eksisterte allerede fra tidligere seeding
 
+### Ytelse og logout-flow (etter første prod-test 2026-05-09)
+- **Login-tid: 6.7s → ~950ms** (warm).
+  - `authenticateUser` Cloud Function kjører med `minInstances: 1` for å eliminere kald-start. Koster ~$2-3/mnd, men gir konsistent rask login for alle brukere.
+  - `_hydrateFromFirebaseUser` parallelliserer `getIdTokenResult` + `getUser`-kall.
+  - `loadClassroomDataToCache` og `statsService.recordLogin` er nå fire-and-forget — dashboard rendrer umiddelbart, cache hydrerer i bakgrunnen.
+- **Logout-flow ryddet** — fjernet "Missing or insufficient permissions"-toast som kunne dukke opp etter logout.
+  - `authController.handleLogout` kaller ikke lenger `refreshAllServiceCaches` (forsøkte Firestore-reads etter at auth-tokenet var revoked).
+  - `schedulerService` lytter på `USER_LOGGED_OUT` og stopper polling. Sjekker `firebase.auth().currentUser` før hver poll-syklus.
+  - `statsService.recordLogin` håndterer `permission-denied` som en forventet warn (race mellom fire-and-forget og rask logout) i stedet for error.
+
 ---
 
 ## [v5.2.1] — 2026-03-16
