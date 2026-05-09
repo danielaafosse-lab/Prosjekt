@@ -14,25 +14,34 @@ Inkluder:
 
 Vi svarer innen 7 dager.
 
-## Kjente begrensninger (per 2026-05-08)
+## Nåværende sikkerhetsmodell (per 2026-05-09)
 
-### Firestore-regler er åpne
+EconSim bruker **Firebase Auth med Custom Tokens** for autentisering og **strenge Firestore-rules** for autorisasjon. Cross-classroom-tilgang er server-side blokkert.
 
-`firestore.rules` er for tiden satt til `allow read, write: if true`. Dette betyr at enhver som har tilgang til Firebase-prosjekt-IDen (som er offentlig i `index.html`) kan lese eller skrive ALL data i databasen.
+**Tekniske detaljer:**
+- Login: Cloud Function `authenticateUser` verifiserer SHA-256-hash mot Firestore og utsteder Firebase Custom Token med claims (`userType`, `classroomId`, `accountNumber`)
+- Klient kjører `signInWithCustomToken(token)` og bruker `onAuthStateChanged` som single source of truth
+- Firestore-rules sjekker `request.auth != null` for alle reads/writes (med kjente unntak: `teacherRequests` create, `passwordResets`/`emailVerifications` token-i-URL flyt)
+- Klasserom-isolering håndheves via `request.auth.token.classroomId == resource.data.classroomId`
+- Superadmin har egen rolle med utvidet tilgang (les alle, skriv begrenset)
 
-**Trusler som er reelle:**
-- Manipulasjon av data i et hvilket som helst klasserom
-- All transaksjons- og brukerdata er offentlig lesbart
-- Ingen rate-limiting på klient eller server
+**Brute-force-mitigering:** `authenticateUser` har bevisst 1-sekunds delay ved feilet passord. Firebase Auth's innebygde rate-limit på `signInWithCustomToken` (~3000/min/IP) er ekstra sikkerhetslag.
 
-**Trusler som ikke er reelle:**
-- Sensitiv personinformasjon (kun fornavn/brukernavn lagres — ingen fødselsnummer, adresse, e-post for elever)
-- Faktiske penger (KKr er virtuell valuta)
-- Lærer-passord (lagres som SHA-256-hash; ikke trivielt reverserbart)
+**Backup og lås:** Lærer kan slette/resette sitt klasserom (Cloud Function `resetClassroom` tar automatisk backup). Superadmin har Backups-dashboard for restore. Superadmin kan låse lærer + klasserom (`setClassroomLocked` revoker refresh-tokens).
 
-**Hvorfor dette er sånn:** EconSim bruker egenutviklet auth (SHA-256, ingen Firebase Auth). Standard Firestore-regler kan ikke verifisere dette.
+## Tidligere begrensninger (løst 2026-05-09)
 
-**Roadmap for tightening:** Migrer til Firebase Auth med Custom Tokens. Estimert 2-3 dager arbeid. Ikke prioritert for HVL-studentprosjekt med kjent og begrenset brukermasse.
+Før migreringen var `firestore.rules` satt til `allow read, write: if true` (full åpen). Dette er nå adressert:
+
+- ✅ Manipulasjon av data på tvers av klasserom — blokkert serverside
+- ✅ Anonym lesing av all Firestore-data — blokkert (med dokumenterte unntak)
+- ✅ Eksponering av superadmin-hash i bundlet JS — flyttet til Firestore med strenge regler
+
+**Restende oppgaver (utenfor scope for 2026-05-09):**
+- Rate-limiting i `loginStats` for brute-force-mitigering på server-siden
+- Migrering til bcrypt for sterkere passord-hashing (krever overgangsstrategi)
+- Ekstra superadmin-konto for redundans
+- App Check for ekstra DDoS-vern
 
 ### Cloud Functions e-post-credentials
 

@@ -4,8 +4,8 @@ Norsk klasseromsøkonomisimulator for ungdomsskolen (7.–10. klasse). Lærer op
 
 - **Live URL:** https://econsim-5723c.web.app
 - **Firebase-prosjekt:** `econsim-5723c`
-- **Gjeldende versjon:** 5.2.1 (mars 2026)
-- **Pågående arbeid:** v6.0 — total restrukturering på branch `refactor/v6-restructure`. Spec: [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md).
+- **Gjeldende versjon:** v6.1.0 (mai 2026) — Firebase Auth-migrering deployet 2026-05-09
+- **Pågående arbeid:** v6.0-restrukturering på branch `refactor/v6-restructure`. v6-spec: [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md). Auth-spec: [docs/superpowers/specs/2026-05-09-firebase-auth-migration-design.md](docs/superpowers/specs/2026-05-09-firebase-auth-migration-design.md).
 
 For full systembeskrivelse, les [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) først (~10 min lesetid). Denne filen forklarer hvordan AI skal jobbe i prosjektet.
 
@@ -27,6 +27,7 @@ Vi har migrert fra organisk vokst monolitt til feature-basert arkitektur. Arbeid
 | 6 — Ytelse (Firestore offline persistence + composite indexes) | Ferdig |
 | 7 — JSDoc-typer og Vitest-tester | Ferdig (24 tester grønne) |
 | 8 — Cutover (denne oppdateringen) | Ferdig |
+| 9 — Firebase Auth + strenge rules + backups + lås | Ferdig 2026-05-09 |
 
 ### Hva er utsatt og hvorfor
 
@@ -107,7 +108,7 @@ ESLint regler (`import-x/no-cycle`, `import-x/no-self-import`) håndhever dette 
 | Database | Firebase Firestore (compat SDK via CDN) med IndexedDB offline persistence |
 | Hosting | Firebase Hosting |
 | Bakgrunnsjobber | Firebase Cloud Functions (ukentlig + månedlig trigger-doc) |
-| Autentisering | Egenutviklet (SHA-256 passord-hash) |
+| Autentisering | Firebase Auth + Custom Tokens (Cloud Function `authenticateUser` verifiserer SHA-256 serverside) |
 | E-post | EmailJS / Gmail SMTP via Cloud Functions |
 | Utviklerverktøy | ESLint 10, Prettier 3, Vitest 4, TypeScript 6 (kun checkJs) |
 
@@ -176,6 +177,16 @@ Alle services har `initialize()` og `refreshCache()` kalt fra `initializeUserSer
 
 - **Service-lag**: direkte import via `index.js` (forretningslogikk gjenbrukes — skatt leser saldoer fra sparing/fond/bedrift)
 - **UI-lag**: via `shared/core/eventBus`. Standard-events: `balance.changed`, `notification.new`, `classroom.switched`, `user.loggedIn` / `user.loggedOut`
+
+### Auth og Firestore-rules (etter 2026-05-09)
+
+- Login går via Cloud Function `authenticateUser` (region `europe-west1`) som returnerer Firebase Custom Token med claims `{ userType, classroomId, accountNumber }`.
+- Klient bruker `signInWithCustomToken` og lytter på `onAuthStateChanged` som single source of truth.
+- `authService.getCurrentClaims()` returnerer claims fra token. Bruk dette for raske rolle-/klasse-sjekker — unngår Firestore-roundtrip.
+- Etter `setCustomUserClaims` på server: kall `authService.refreshClaims()` for å tvinge token-refresh.
+- Firestore-rules håndhever `request.auth.token.classroomId == resource.data.classroomId` på alle klasseromsdata. Cross-classroom-tilgang er server-side blokkert.
+- **Alle queries må filtreres på `classroomId`** for å passere strenge rules. `dataService.getUsers/getJobs/getApplications/getTransactions` auto-filtrerer på `_currentClassroomId`. `getClassroomData` normaliserer `econsim_X`-prefiks (legacy).
+- Reset/restore/lås kjører som Cloud Functions med admin SDK — klient kan ikke skrive `classroomBackups` direkte (rule: `allow write: if false`).
 
 ---
 

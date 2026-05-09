@@ -72,6 +72,7 @@ Læringen kommer fra direkte erfaring: hvordan lønn beskattes, hvorfor sparing 
 | 6 — Ytelse (offline persistence, indekser) | Ferdig |
 | 7 — JSDoc-typer og Vitest-tester | Ferdig (24 tester) |
 | 8 — Cutover | Ferdig |
+| 9 — Firebase Auth + strenge rules + backup/restore/lås | Ferdig (2026-05-09) |
 
 Se [CHANGELOG.md](CHANGELOG.md) for full versjonshistorikk og [docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md](docs/superpowers/specs/2026-05-06-econsim-v6-restructure-design.md) for v6-design.
 
@@ -86,7 +87,7 @@ Se [CHANGELOG.md](CHANGELOG.md) for full versjonshistorikk og [docs/superpowers/
 | Database | Firebase Firestore (compat SDK via CDN) med IndexedDB offline persistence |
 | Hosting | Firebase Hosting |
 | Bakgrunnsjobber | Firebase Cloud Functions (ukentlig + månedlig trigger-doc) |
-| Autentisering | Egenutviklet (SHA-256 passord-hash, ingen Firebase Auth) |
+| Autentisering | Firebase Auth + Custom Tokens (server-side SHA-256-verifisering via Cloud Function `authenticateUser`) |
 | E-post | Nodemailer via Cloud Functions (Gmail SMTP) |
 | Utviklerverktøy | ESLint 10, Prettier 3, Vitest 4, TypeScript 6 (kun checkJs) |
 
@@ -255,8 +256,9 @@ js/
 
 | Entitet | Felt (utvalg) |
 |---|---|
-| `User` | `id`, `username`, `name`, `accountNumber`, `type`, `balance`, `classroomId`, `passwordHash` |
-| `Classroom` | `id`, `teacherId`, `className`, `settings: ClassroomSettings` |
+| `User` | `id`, `username` (lowercase), `name`, `accountNumber`, `type`, `balance`, `classroomId`, `passwordHash`, `locked` |
+| `Classroom` | `id`, `teacherId`, `className`, `settings`, `locked`, `lockedAt`, `lockedBy`, `lastResetAt` |
+| `ClassroomBackup` | `id`, `classroomId`, `createdAt`, `createdBy`, `reason` (`'reset'`/`'pre-restore'`/`'demo-reset'`), full snapshot av users + alle klasseromsdata |
 | `SavingsAccount` | `id`, `ownerId`, `classroomId`, `balance` |
 | `FundAccount` | Som SavingsAccount |
 | `Transaction` | `id`, `classroomId`, `from`, `to`, `amount`, `description`, `type`, `createdAt` |
@@ -267,7 +269,7 @@ js/
 
 ### 6.4 Firestore-collections
 
-`users`, `classrooms`, `transactions`, `jobs`, `applications`, `businesses`, `loans`, `savings`, `notifications`, `messages`, `inbox`, `outbox`, `weeklySnapshots`, `schedulerTriggers`, `teacherRequests`, `emailVerifications`, `passwordResets`, `loginStats`, `geoStats`.
+`users`, `classrooms`, `transactions`, `jobs`, `applications`, `businesses`, `loans`, `savings`, `funds`, `notifications`, `messages`, `inbox`, `outbox`, `weeklySnapshots`, `schedulerTriggers`, `teacherRequests`, `emailVerifications`, `passwordResets`, `loginStats`, `geoStats`, `jobApplications`, `ownershipOffers`, `taxAccount`, `classroomBackups` (NY 2026-05-09), `migrationLog` (NY 2026-05-09).
 
 Subcollections forekommer for `businesses`, `loans`, `savings`, `notifications` (sub per klasserom).
 
@@ -405,9 +407,12 @@ Idempotens via `lastProcessed`-tidsstempel på klasserommet.
 - `dataService.setCurrentClassroomId(id)` styrer hvilket klasserom som er aktivt for innlogget bruker.
 - Ved klasserombytte (gjelder superadmin/lærer med flere klasser): `refreshCache()` kalles på alle services.
 
-**Sikkerhetsmodell:**
-- `firestore.rules` enforcer at lese/skrive krever matching `classroomId` på dokumenter
-- Brukere kan kun lese egen `User`, eget klasseroms publike data, og egne kontoer
+**Sikkerhetsmodell (per 2026-05-09):**
+- Firebase Auth + Custom Tokens med claims (`userType`, `classroomId`, `accountNumber`)
+- `firestore.rules` håndhever **serverside** at lese/skrive krever matching `classroomId` på dokumenter (basert på `request.auth.token.classroomId`)
+- Cross-classroom-tilgang er server-side blokkert; klient-omgåelse er ikke mulig
+- Cloud Functions (admin SDK) omgår reglene for spesielle operasjoner: reset, restore, backup, lås, skjema-migrering
+- Brukere kan kun lese egen `User`, eget klasseroms data, og egne kontoer
 
 ---
 
@@ -642,6 +647,25 @@ Co-Authored-By: <om relevant>
 
 Type kan være: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `build`, `chore`.
 Scope er ofte fase-nummer (f.eks. `fase5a`) eller feature-navn (f.eks. `taxes`).
+
+### 15.5 Slett klasse / restore / lås
+
+**Lærer — slett klasse og start på nytt:** Innstillinger-modal har en "Slett klasse og start på nytt"-knapp i bunn. Cloud Function `resetClassroom` tar **automatisk backup** til `classroomBackups`-collection før sletting. Backupen beholdes i 90 dager. Klassen beholder lærer-konto og klasserom-doc, men alle elever, transaksjoner, jobber, bedrifter, lån, sparing, notifikasjoner og meldinger slettes.
+
+**Superadmin — Backups-dashboard:** Egen seksjon nederst i superadmin-dashboard som lister alle backups, med knapp for å forhåndsvise, gjenopprette og slette. Restore tar **pre-restore-backup først** så operasjonen er reverserbar. Krever dobbel bekreftelse (klasserom-ID må skrives inn).
+
+**Superadmin — lås lærer + klasserom:** Hver klasserom-rad i lista har en `🔒 Lås`-knapp ved siden av `🗑️ Slett`. Lås revoker lærerens Firebase Auth refresh-token (eksisterende sesjon ugyldiggjøres innen ~1 time) og blokkerer fremtidige login-forsøk via `authenticateUser` Cloud Function (`auth.accountLocked`-feilmelding). Lås opp via samme knapp.
+
+**Implementasjon:** Alle tre operasjoner kjører som Cloud Functions med admin SDK (omgår Firestore-rules). Klient-koden er kun et tynt UI-lag som kaller funksjonene. Filer:
+- Service: `js/features/backups/services/backupService.js`
+- Controller: `js/features/backups/controllers/backupsController.js`
+- Cloud Functions: `resetClassroom`, `restoreClassroom`, `setClassroomLocked`, `listBackups`, `previewBackup`, `deleteBackup`, `cleanOldBackups` (alle i `europe-west1`)
+
+**Manuell nuke (utvikling):** `window.resetEconSim()` er fjernet fra prod-bundle (var et utviklingsverktøy). For utviklingsbruk:
+```bash
+firebase firestore:delete --all-collections --recursive --project econsim-5723c
+```
+Etter nuke kjøres `ensureDemoData` Cloud Function automatisk fra klienten ved første sidebesøk for å gjenopprette demo-klasserom.
 
 ---
 

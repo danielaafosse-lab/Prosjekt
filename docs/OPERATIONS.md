@@ -154,54 +154,31 @@ For lokal testing av e-post må du sette `GMAIL_EMAIL` og `GMAIL_PASSWORD` som e
 
 ## 5. Sikkerhetsmodell
 
-### Nåværende tilstand (2026-05-08)
+### Implementert per 2026-05-09
 
-**`firestore.rules` er fullt åpen** — `allow read, write: if true`. Dette er en **kjent svakhet**:
+EconSim bruker nå **Firebase Auth med Custom Tokens** og **strenge Firestore-rules**.
 
-```
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}
-```
+**Auth-flow:**
+1. Klient kaller Cloud Function `authenticateUser` med username + plaintext password
+2. Cloud Function verifiserer `SHA-256(password)` mot `users/{uid}.passwordHash` i Firestore
+3. Cloud Function returnerer Firebase Custom Token med claims `{ userType, classroomId, accountNumber }`
+4. Klient kjører `firebase.auth().signInWithCustomToken(token)` — Firebase Auth setter `currentUser`
+5. `onAuthStateChanged` henter user-doc og dekoder claims via `getIdTokenResult()`
 
-### Hvorfor det er sånn
+**Firestore-rules:**
+- `request.auth != null` kreves for alle reads/writes (med kjente unntak: token-i-URL flows)
+- Klasserom-isolering: `request.auth.token.classroomId == resource.data.classroomId`
+- Backup-collection (`classroomBackups`) er rene-kun for klient (`allow write: if false`); skrives kun av Cloud Functions med admin SDK
+- Migration audit-log (`migrationLog`) er superadmin-read-only
 
-EconSim bruker egenutviklet auth (SHA-256-hash, ingen Firebase Auth). Standard Firestore-regler kan ikke verifisere passord-hash, så `request.auth != null` virker ikke.
+**Trusler som er adressert:**
+- ✅ Cross-classroom data-manipulasjon — server-side blokkert
+- ✅ Anonym lesing av all Firestore-data — blokkert
+- ✅ Eksponering av superadmin-hash i bundlet JS — flyttet til Firestore
 
-### Hva det betyr i praksis
+**Brute-force-mitigering:** 1-sekunds delay i `authenticateUser` ved feilet passord. Firebase Auth's innebygde rate-limit (~3000/min/IP).
 
-**Trusler som er reelle:**
-- En kjent angriper kan manipulere data i en hvilken som helst klasserom (gi seg selv penger, slette transaksjoner, etc.)
-- All data er offentlig lesbart hvis du har Firestore-adressen
-- Ingen rate-limiting i klienten
-
-**Trusler som ikke er reelle:**
-- Sensitiv personinformasjon (kun fornavn/brukernavn lagres)
-- Faktiske penger (det er KKr — virtuell valuta)
-- Lærer-passord (lagres som SHA-256-hash, kan ikke reverseres)
-
-### Mitigerende tiltak til real auth implementeres
-
-1. **Klasserom-ID-er er ikke gjettbare** — generert med `crypto.randomUUID()`-lignende
-2. **Demo-data er bevisst åpen** — `demo-classroom` brukes til testing og det er OK at den manipuleres
-3. **Real klasserom har anonymiserte navn** — ingen elev-data lagres som identifiserer person utenfor klasserommet
-4. **Audit log:** alle transaksjoner lagres med `createdAt` og kan etterprøves
-
-### Roadmap for tightening
-
-Når dette må strammes inn (f.eks. for utbredelse til flere skoler):
-
-1. **Migrer til Firebase Auth** med Custom Tokens
-2. Generer Custom Token på Cloud Function etter SHA-256-validering
-3. Klient setter token via `firebase.auth().signInWithCustomToken(token)`
-4. Skriv `firestore.rules` som verifiserer `request.auth.uid == request.resource.data.userId` på dokumenter
-5. Test grundig med Firebase Emulator før deploy
-
-Estimert arbeid: 2-3 dager fokusert.
+**Restende:** Per-write rule-check av `Classroom.locked` (utskutt — token-revoke er nok for nå), bcrypt-migrering, ekstra superadmin-konto for redundans.
 
 ---
 
@@ -325,3 +302,45 @@ Lærer kan eksportere fra UI: Innstillinger → Eksporter data. Dette lager en J
 **Firebase-prosjekt-eier:** Daniel (samme).
 
 Ved kritiske produksjonsfeil utenom hovedutviklers tilgang: ingen backup-personell per nå. **Forbedring foreslått:** legg til Firebase Editor-rolle på minst én ekstra person.
+
+---
+
+## 11. Backup, restore og lås
+
+### Klasserom-backup
+Hver gang en lærer kjører "Slett klasse og start på nytt" (Innstillinger-modal) eller superadmin gjør restore, tar `resetClassroom`/`restoreClassroom` Cloud Function automatisk en full backup til `classroomBackups`-collection.
+
+**Backup-innhold:** Alle dokumenter i `users` (kun studenter), `transactions`, `jobs`, `applications`, `businesses`, `loans`, `savings`, `funds`, `notifications`, `messages`, `weeklySnapshots` filtrert på `classroomId`, pluss klasserom-doc-en selv.
+
+**Retensjon:** 90 dager. `cleanOldBackups` Cloud Function kjører søndag 04:00 norsk tid og sletter eldre.
+
+### Restore (kun superadmin)
+Backups-dashboard i superadmin-grensesnitt lar deg liste, forhåndsvise, gjenopprette og slette backups. Restore tar **pre-restore-backup først** så operasjonen er reverserbar. Krever dobbel bekreftelse (klasserom-ID må skrives inn).
+
+### Lås (kun superadmin)
+Hver klasserom-rad har `🔒 Lås`/`🔓 Lås opp`-knapp. Lås:
+1. Setter `Classroom.locked = true` og `User.locked = true` på lærer
+2. Kjører `admin.auth().revokeRefreshTokens(teacherId)` — eksisterende sesjoner ugyldiggjøres innen ~1 time
+3. `authenticateUser` kaster `auth.accountLocked` ved fremtidige login-forsøk
+
+### Manuell nuke (utvikling)
+`window.resetEconSim()` er fjernet fra prod-bundle (var et utviklingsverktøy). For utviklingsbruk:
+
+```bash
+# Slett alle data
+firebase firestore:delete --all-collections --recursive --project econsim-5723c
+
+# Demo-klasserommet gjenopprettes automatisk når en klient åpner siden
+# (ensureDemoData Cloud Function kalles fra app-init).
+```
+
+### Migrering / IAM-fix
+Hvis `authenticateUser` returnerer `auth/insufficient-permission` etter prosjekt-flytting eller IAM-endringer:
+
+```bash
+node scripts/grant-token-creator-sa.cjs   # Token Creator-rolle på SA
+node scripts/grant-token-creator.cjs      # Project-level binding
+node scripts/enable-identity-platform.cjs # Aktiver Identity Platform
+```
+
+Disse skriptene bruker firebase-tools OAuth-token og krever `firebase login`.

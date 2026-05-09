@@ -124,6 +124,46 @@ Statistikk-fanen viser:
 
 Eksporter til Excel hvis du vil presentere for skoleledelse.
 
+### Slett klasse og start på nytt
+
+Hvis du vil tilbakestille klasserommet til en blank tavle (slette alle elever, transaksjoner, jobber, bedrifter, lån, sparing — men beholde klassenavn og din egen lærer-konto):
+
+1. Klikk **Innstillinger** (tannhjul-ikon)
+2. Bla helt ned, klikk **Slett klasse og start på nytt**
+3. Bekreft to ganger (advarsel + sikkerhetsspørsmål)
+
+**Backup tas automatisk** før sletting — i opptil 90 dager kan superadmin gjenopprette klassen til den tilstanden den hadde før reset, hvis du angrer.
+
+---
+
+## For superadmin
+
+Superadmin (kun én konto: `DanielAlexander`) har eget dashboard med utvidet tilgang.
+
+### Backup-administrasjon
+
+**Backups**-seksjonen nederst i dashboardet lister alle automatiske backups (klasserom-resets de siste 90 dagene). For hver backup:
+
+- 👁️ **Forhåndsvis** — se hva som er i backupen (antall elever, transaksjoner, jobber, bedrifter)
+- ↺ **Restore** — gjenopprett klasserommet fra denne backupen
+- 🗑️ **Slett** — fjerne backupen permanent
+
+Restore krever dobbel bekreftelse (klasserom-ID må skrives inn) og tar **pre-restore-backup først** — så operasjonen er reverserbar hvis noe blir galt.
+
+### Lås lærer + klasserom
+
+I klasserom-lista har hver rad en `🔒 Lås`-knapp ved siden av `🗑️ Slett`. Når du låser:
+
+- Læreren kan ikke logge inn (får "Konto er låst"-feilmelding)
+- Eksisterende sesjon ugyldiggjøres innen ~1 time
+- Klassen kan låses opp igjen når som helst via samme knapp
+
+Bruk dette for midlertidig sperring (f.eks. ved misbruk eller mens noe undersøkes) uten å slette klasserommet.
+
+### Lærersøknader
+
+`📬 Lærersøknader`-seksjonen viser ventende søknader fra brukere som har klikket "Er du lærer? Søk om tilgang" på loginsiden. Godkjenn ved å opprette en lærer-konto for dem.
+
 ---
 
 ## For elever
