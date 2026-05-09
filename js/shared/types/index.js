@@ -76,18 +76,25 @@
  * @property {ClassroomSettings} settings
  * @property {string} createdAt
  * @property {string} [updatedAt]
+ * @property {boolean} [locked]              // satt av superadmin via setClassroomLocked
+ * @property {string|null} [lockedAt]
+ * @property {string|null} [lockedBy]        // uid av superadmin som låste
+ * @property {string|null} [lastResetAt]
+ * @property {number} [nextStudentNumber]
+ * @property {number} [nextBusinessNumber]
  */
 
 /**
  * @typedef {Object} User
  * @property {string} id
- * @property {string} username
+ * @property {string} username        // alltid lowercase i Firestore
  * @property {string} name
  * @property {string} accountNumber  // 3-sifret kontonummer
  * @property {UserType} type
  * @property {number} balance
  * @property {string} classroomId
- * @property {string} [passwordHash]
+ * @property {string} [passwordHash]  // SHA-256 hex
+ * @property {boolean} [locked]       // satt av superadmin via setClassroomLocked
  * @property {string} [email]
  * @property {string} createdAt
  * @property {string} [updatedAt]
@@ -197,6 +204,41 @@
  * @property {string} message
  * @property {boolean} read
  * @property {string} createdAt
+ */
+
+/**
+ * Snapshot av et klasserom + all dets data, lagret i `classroomBackups`-collection
+ * av Cloud Function `resetClassroom` / `restoreClassroom`. Skrives kun via
+ * admin SDK; klient kan kun lese (superadmin eller læreren for klasserommet).
+ *
+ * @typedef {Object} ClassroomBackup
+ * @property {string} id                     // ${classroomId}_${ISO} eller pre-restore_${classroomId}_${ISO}
+ * @property {string} classroomId
+ * @property {string} createdAt              // ISO 8601
+ * @property {string} createdBy              // uid
+ * @property {'reset'|'pre-restore'|'demo-reset'} reason
+ * @property {Object|null} classroom         // full Classroom-doc + id
+ * @property {Array<Object>} users           // alle users der classroomId matcher
+ * @property {Array<Object>} transactions
+ * @property {Array<Object>} jobs
+ * @property {Array<Object>} applications
+ * @property {Array<Object>} businesses
+ * @property {Array<Object>} loans
+ * @property {Array<Object>} savings
+ * @property {Array<Object>} funds
+ * @property {Array<Object>} notifications
+ * @property {Array<Object>} messages
+ * @property {Array<Object>} weeklySnapshots
+ */
+
+/**
+ * Custom claims på Firebase Auth-token-et, lest av klienten via
+ * `authService.getCurrentClaims()` og av Firestore-rules via `request.auth.token`.
+ *
+ * @typedef {Object} AuthClaims
+ * @property {UserType|null} userType
+ * @property {string|null} classroomId
+ * @property {string|null} accountNumber
  */
 
 // JSDoc-fil eksporterer ingen runtime-verdier — types er fil-skjema.
