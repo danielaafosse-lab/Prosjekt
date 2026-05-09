@@ -78,6 +78,13 @@ class AuthService {
     if (dataService.setCurrentUserId) dataService.setCurrentUserId(firebaseUser.uid);
     if (this.currentClaims.classroomId && dataService.setCurrentClassroomId) {
       dataService.setCurrentClassroomId(this.currentClaims.classroomId);
+      // Load classroom data into cache (under strenge rules må alle queries
+      // filtreres på classroomId — caches er primær kilde for synkron tilgang).
+      try {
+        await dataService.loadClassroomDataToCache(this.currentClaims.classroomId);
+      } catch (err) {
+        console.warn('loadClassroomDataToCache feilet ved hydrering:', err.message);
+      }
     }
   }
 

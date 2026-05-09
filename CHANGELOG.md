@@ -6,6 +6,49 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), og pr
 
 ---
 
+## [v6.1.0] — 2026-05-09 — Firebase Auth-migrering
+
+### Sikkerhet
+- Migrert fra egenutviklet SHA-256-auth til **Firebase Auth med Custom Tokens**. Login går nå via Cloud Function `authenticateUser` som verifiserer SHA-256 serverside og utsteder Firebase-token med claims (`userType`, `classroomId`, `accountNumber`).
+- **Strenge `firestore.rules`** håndhever auth + klasserom-isolering serverside. Cross-classroom-tilgang er nå blokkert serverside (var kun klient-side validert).
+- **`users/superadmin`** er flyttet fra hardkodet hash i klient-bundle til Firestore-doc med strenge regler. Hashen er ikke lenger eksponert via DevTools.
+- **`User.password`-felt renamet til `User.passwordHash`** for tydelig skille mellom plaintext og hash. Alle eksisterende usernames er normalisert til lowercase for konsistent serverside-lookup.
+
+### Backup og restore
+- Per-klasserom reset (lærer-funksjon i Innstillinger) tar nå **automatisk backup** før sletting, lagret i ny `classroomBackups`-collection.
+- **Backups beholdes i 90 dager**, automatisk ryddet hver søndag 04:00 norsk tid via `cleanOldBackups`.
+- **Nytt Backups-dashboard for superadmin** med liste, forhåndsvisning, restore og sletting av backups.
+- **Restore tar pre-restore-backup først** så operasjonen er fullt reverserbar. Krever dobbel bekreftelse (klasserom-ID må skrives inn).
+
+### Lås
+- Superadmin kan **låse en lærer + klasserom** via knapp i klasserom-lista. Lås revoker Firebase Auth refresh-tokens (eksisterende sesjoner ugyldiggjøres innen ~1 time) og blokkerer fremtidige login-forsøk.
+- Lås opp via samme knapp.
+
+### Tatt bort
+- **`window.resetEconSim()`** er fjernet fra prod-bundle. Var et utviklingsverktøy med stort blast radius. Erstattet av `firebase firestore:delete --all-collections --recursive` for utvikling (dokumentert i `docs/OPERATIONS.md`).
+- **`STORAGE_KEYS.session`** fjernet — Firebase Auth håndterer egen sesjon-persistens i IndexedDB.
+
+### Endret
+- **Cloud Functions for auth/reset/backup/lock kjører i `europe-west1`** (var `us-central1` for legacy email-funksjoner). Colocation med Firestore sparer ~100ms per kall.
+- Klient-koden i `main.js` for `deleteClassData()` og `resetDemoClassroom()` er **redusert med ~140 linjer** ved å delegere til Cloud Functions med admin SDK.
+- **`authService` skrevet om** rundt `onAuthStateChanged` som single source of truth. Ny API: `getCurrentClaims()`, `refreshClaims()`, `isSuperAdmin()`.
+- **JSDoc-typer oppdatert**: `User.passwordHash`, `User.locked`, `Classroom.locked`/`lockedAt`/`lockedBy`/`lastResetAt`, ny `ClassroomBackup`- og `AuthClaims`-typedef.
+
+### Utviklerverktøy
+- **Firebase Emulator Suite** konfigurert i `firebase.json` (auth + functions + firestore + hosting).
+- **Klient-side emulator-detektering** via `?emulator=1` URL-parameter (eller automatisk på localhost).
+- **Vitest-tester for Firestore-rules** via `@firebase/rules-unit-testing` — 14 tester i `tests/firestore-rules.test.js`. Kjøres med `npm run test:rules` (krever firestore-emulator).
+- **Cloud Function `migrateAuthSchema`** for én-gangs schema-cutover (idempotent — kan re-kjøres trygt).
+
+### Migreringsrapport (kjørt 2026-05-09)
+- 14 brukere fikk feltet `password` renamet til `passwordHash`
+- 4 brukernavn lowercased for konsistent server-lookup
+- 15 brukere fikk `locked: false` lagt til
+- 2 klasserom fikk `locked: false` lagt til
+- `users/superadmin`-dokumentet eksisterte allerede fra tidligere seeding
+
+---
+
 ## [v5.2.1] — 2026-03-16
 
 ### Added

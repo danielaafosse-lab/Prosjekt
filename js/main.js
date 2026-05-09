@@ -104,19 +104,27 @@ class EconSimApp {
         console.warn('ensureDemoData feilet (ignorerer; demo finnes sannsynligvis):', err.message);
       }
 
-      // Initialiser klasserom-service (multi-tenancy)
-      await classroomService.initialize();
-      console.log('📚 ClassroomService initialisert');
+      // Initialiser klasserom-service (multi-tenancy) — feiler stille under strenge
+      // rules dersom bruker ikke er innlogget; cache lastes etter login.
+      try {
+        await classroomService.initialize();
+        console.log('📚 ClassroomService initialisert');
+      } catch (err) {
+        console.warn('classroomService.initialize feilet (forventet før login):', err.message);
+      }
 
-      // Sikre at demo-eleven Kari alltid finnes med kjent innlogging
-      await this.ensureDemoKariAccess();
+      // Demo-data håndteres serverside av ensureDemoData Cloud Function;
+      // ensureDemoKariAccess + ensureDemoClassroomIntegrity er klient-side
+      // workarounds som krever auth — kjøres kun etter login (innenfor showTeacherDashboard etc).
 
-      // Sikre at demo-lærer, demo-klasserom og demo-elever er korrekt koblet sammen
-      await this.ensureDemoClassroomIntegrity();
-
-      // Hent innstillinger (defaults)
-      this.settings = await settingsService.getSettings();
-      console.log('⚙️ Innstillinger lastet:', this.settings);
+      // Hent innstillinger (defaults) — forsøker, faller tilbake til defaults hvis ikke autentisert.
+      try {
+        this.settings = await settingsService.getSettings();
+        console.log('⚙️ Innstillinger lastet:', this.settings);
+      } catch (err) {
+        console.warn('settingsService.getSettings feilet (bruker defaults):', err.message);
+        this.settings = { ...APP_CONFIG.defaults };
+      }
 
       // Start scheduler for automatiske prosesser
       schedulerService.start();

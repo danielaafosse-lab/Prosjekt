@@ -79,21 +79,14 @@ class FirebaseDataService {
     try {
       // Initialiser Firebase
       await firebaseService.initialize();
-      
-      // Sjekk om det finnes data, hvis ikke seed med demo-data
-      const users = await firebaseService.getAll(COLLECTIONS.USERS);
-      
-      if (users.length === 0) {
-        console.log('📂 Ingen data i Firebase - initialiserer med demo-data...');
-        await this._seedInitialData();
-      }
-      
-      // Cache brukere for synkron tilgang
-      this._usersCache = await firebaseService.getAll(COLLECTIONS.USERS);
-      console.log(`👥 Cachet ${this._usersCache.length} brukere`);
-      
+
+      // Under strenge Firestore-rules kan ikke uautentiserte klienter lese
+      // users-collection. Cache-load er derfor utsatt til etter login.
+      // Demo-data håndteres serverside via ensureDemoData Cloud Function.
+      this._usersCache = [];
+
       this.initialized = true;
-      console.log('✅ Firebase DataService initialisert');
+      console.log('✅ Firebase DataService initialisert (cache lastes etter login)');
     } catch (error) {
       console.error('❌ Feil ved initialisering av Firebase DataService:', error);
       throw error;
@@ -120,9 +113,10 @@ class FirebaseDataService {
     try {
       console.log(`📦 Laster data for klasserom ${classroomId}...`);
 
-      // Kjør alle queries parallelt for bedre ytelse
+      // Kjør alle queries parallelt for bedre ytelse — alle filtrert på classroomId
+      // for strenge Firestore-rules.
       const [users, classroom, businesses, loans, savings, applications, businessJobApps] = await Promise.all([
-        firebaseService.getAll(COLLECTIONS.USERS),
+        firebaseService.getWhere(COLLECTIONS.USERS, 'classroomId', '==', classroomId),
         this.getClassroom(classroomId),
         firebaseService.getWhere(COLLECTIONS.BUSINESSES, 'classroomId', '==', classroomId),
         firebaseService.getWhere(COLLECTIONS.LOANS, 'classroomId', '==', classroomId),
@@ -372,9 +366,14 @@ class FirebaseDataService {
   // ==================== USER OPERATIONS ====================
 
   /**
-   * Hent alle brukere
+   * Hent alle brukere — filtrert på classroomId for strenge Firestore-rules.
+   * Hvis ingen classroomId er gitt eller satt aktiv, forsøkes getAll (for superadmin).
    */
-  async getUsers() {
+  async getUsers(classroomId) {
+    const cid = classroomId || this._currentClassroomId;
+    if (cid) {
+      return await firebaseService.getWhere(COLLECTIONS.USERS, 'classroomId', '==', cid);
+    }
     return await firebaseService.getAll(COLLECTIONS.USERS);
   }
 
@@ -633,9 +632,18 @@ class FirebaseDataService {
   // ==================== TRANSACTION OPERATIONS ====================
 
   /**
-   * Hent alle transaksjoner
+   * Hent alle transaksjoner. Under strenge Firestore-rules må queries filtreres
+   * på klasserom-id for å passere autorisasjonssjekken — vi bruker derfor det
+   * gjeldende klasserom-id automatisk hvis ingen er oppgitt.
+   *
+   * @param {string} [classroomId] - hvis utelatt, brukes _currentClassroomId
    */
-  async getTransactions() {
+  async getTransactions(classroomId) {
+    const cid = classroomId || this._currentClassroomId;
+    if (cid) {
+      return await firebaseService.getWhere(COLLECTIONS.TRANSACTIONS, 'classroomId', '==', cid);
+    }
+    // Fallback: hent alle (kun mulig for superadmin under strenge rules)
     return await firebaseService.getAll(COLLECTIONS.TRANSACTIONS);
   }
 
@@ -820,9 +828,14 @@ class FirebaseDataService {
   // ==================== JOB OPERATIONS ====================
 
   /**
-   * Hent alle jobber
+   * Hent alle jobber for nåværende klasserom (eller spesifikt id).
+   * Filtrert på classroomId for å passere strenge Firestore-rules.
    */
-  async getJobs() {
+  async getJobs(classroomId) {
+    const cid = classroomId || this._currentClassroomId;
+    if (cid) {
+      return await firebaseService.getWhere(COLLECTIONS.JOBS, 'classroomId', '==', cid);
+    }
     return await firebaseService.getAll(COLLECTIONS.JOBS);
   }
 
@@ -877,9 +890,13 @@ class FirebaseDataService {
   // ==================== APPLICATION OPERATIONS ====================
 
   /**
-   * Hent alle søknader
+   * Hent alle søknader (filtrert på classroomId for strenge Firestore-rules).
    */
-  async getApplications() {
+  async getApplications(classroomId) {
+    const cid = classroomId || this._currentClassroomId;
+    if (cid) {
+      return await firebaseService.getWhere(COLLECTIONS.APPLICATIONS, 'classroomId', '==', cid);
+    }
     return await firebaseService.getAll(COLLECTIONS.APPLICATIONS);
   }
 
@@ -1004,12 +1021,20 @@ class FirebaseDataService {
   /**
    * Hent data for nåværende klasserom
    * Erstatter localStorage-basert getClassroomData
+   *
+   * Aksepterer både Firestore collection-navn (`'businesses'`) og legacy
+   * `STORAGE_KEYS.X`-format (`'econsim_businesses'`) — sistnevnte er en
+   * pre-eksisterende inkonsistens i ulike services.
    */
   async getClassroomData(collectionName) {
     const classroomId = await this.getCurrentClassroomId();
     if (!classroomId) return [];
-    
-    return await firebaseService.getWhere(collectionName, 'classroomId', '==', classroomId);
+
+    const normalized = collectionName.startsWith('econsim_')
+      ? collectionName.slice('econsim_'.length)
+      : collectionName;
+
+    return await firebaseService.getWhere(normalized, 'classroomId', '==', classroomId);
   }
 
   /**
@@ -1018,35 +1043,34 @@ class FirebaseDataService {
    */
   async saveClassroomData(collectionName, data, docId = null) {
     const classroomId = await this.getCurrentClassroomId();
-    
+    const normalized = collectionName.startsWith('econsim_')
+      ? collectionName.slice('econsim_'.length) : collectionName;
+
     // Håndter arrays - lagre hvert element separat
     if (Array.isArray(data)) {
-      console.log(`📦 Lagrer ${data.length} elementer til ${collectionName}`);
+      console.log(`📦 Lagrer ${data.length} elementer til ${normalized}`);
       const results = [];
       for (const item of data) {
         if (item.id) {
-          // Oppdater eksisterende
-          const updated = await this.saveClassroomItem(collectionName, item);
+          const updated = await this.saveClassroomItem(normalized, item);
           results.push(updated);
         } else {
-          // Opprett ny
-          const created = await this.createClassroomItem(collectionName, item);
+          const created = await this.createClassroomItem(normalized, item);
           results.push(created);
         }
       }
       return results;
     }
-    
-    // Enkelt objekt
+
     const dataWithClassroom = {
       ...data,
       classroomId: classroomId || data.classroomId
     };
-    
+
     if (docId) {
-      return await firebaseService.update(collectionName, docId, dataWithClassroom);
+      return await firebaseService.update(normalized, docId, dataWithClassroom);
     }
-    return await firebaseService.create(collectionName, dataWithClassroom);
+    return await firebaseService.create(normalized, dataWithClassroom);
   }
 
   /**
@@ -1054,13 +1078,15 @@ class FirebaseDataService {
    */
   async createClassroomItem(collectionName, data) {
     const classroomId = await this.getCurrentClassroomId();
+    const normalized = collectionName.startsWith('econsim_')
+      ? collectionName.slice('econsim_'.length) : collectionName;
     const dataWithClassroom = {
       ...data,
       classroomId: classroomId || data.classroomId
     };
-    
+
     const docId = data.id || this._generateId();
-    return await firebaseService.create(collectionName, dataWithClassroom, docId);
+    return await firebaseService.create(normalized, dataWithClassroom, docId);
   }
 
   /**
@@ -1072,20 +1098,23 @@ class FirebaseDataService {
     }
 
     const classroomId = await this.getCurrentClassroomId();
+    const normalized = collectionName.startsWith('econsim_')
+      ? collectionName.slice('econsim_'.length) : collectionName;
     const dataWithClassroom = {
       ...data,
       classroomId: classroomId || data.classroomId
     };
 
-    // Bruk set() i stedet for update() for å håndtere både nye og eksisterende dokumenter
-    return await firebaseService.set(collectionName, data.id, dataWithClassroom);
+    return await firebaseService.set(normalized, data.id, dataWithClassroom);
   }
 
   /**
    * Slett enkelt element fra classroom-isolert collection
    */
   async deleteClassroomItem(collectionName, itemId) {
-    return await firebaseService.delete(collectionName, itemId);
+    const normalized = collectionName.startsWith('econsim_')
+      ? collectionName.slice('econsim_'.length) : collectionName;
+    return await firebaseService.delete(normalized, itemId);
   }
 
   /**

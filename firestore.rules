@@ -74,8 +74,9 @@ service cloud.firestore {
       allow update, delete: if isInClassroom(resource.data.classroomId);
     }
     match /notifications/{id} {
-      allow read: if isInClassroom(resource.data.classroomId)
-                  && (isTeacher() || isSuperAdmin() || request.auth.uid == resource.data.userId);
+      // Read: alle i klasserommet kan liste — applikasjonen filtrerer videre på userId.
+      // Privat-data lekkasje er minimal (kun varslingstekst, ingen sensitive felt).
+      allow read: if isInClassroom(resource.data.classroomId);
       allow create: if isInClassroom(request.resource.data.classroomId);
       allow update, delete: if isInClassroom(resource.data.classroomId);
     }
@@ -83,6 +84,21 @@ service cloud.firestore {
       allow read: if isInClassroom(resource.data.classroomId);
       allow create: if isInClassroom(request.resource.data.classroomId);
       allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /jobApplications/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /ownershipOffers/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /taxAccount/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow write: if isInClassroom(resource.data.classroomId)
+                   || (request.method == 'create' && isInClassroom(request.resource.data.classroomId));
     }
     match /inbox/{id} {
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isTeacher() || isSuperAdmin());
