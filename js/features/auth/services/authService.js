@@ -1,241 +1,177 @@
 /**
- * Authentication Service
- * Håndterer brukerautentisering og session management
+ * Authentication Service — Firebase Auth + Custom Tokens
+ *
+ * Login flow:
+ *   1. Klient kaller Cloud Function `authenticateUser` med username + password
+ *   2. Cloud Function verifiserer SHA-256(passord) mot users/{uid}.passwordHash
+ *   3. Returnerer Firebase Custom Token med claims (userType, classroomId, accountNumber)
+ *   4. Klient kjører `signInWithCustomToken(token)` → Firebase Auth setter currentUser
+ *   5. `onAuthStateChanged` henter User-doc fra Firestore + dekoder claims
+ *
+ * Sesjon-persistens:
+ *   Firebase Auth bruker IndexedDB (LOCAL persistence). Sesjon overlever sidereload
+ *   automatisk uten egen localStorage-håndtering.
  */
 
 import { dataService } from '../../../shared/core/dataService.js';
 import { eventBus, EVENTS } from '../../../shared/core/eventBus.js';
-import { hashPassword } from '../../../shared/utils/helpers.js';
-import { STORAGE_KEYS, SUPERADMIN, USER_TYPES } from '../../../shared/config/config.js';
 import { languageService } from '../../i18n/index.js';
 import { statsService } from '../../stats/index.js';
 
 class AuthService {
   constructor() {
+    /** @type {object|null} Firestore user-doc */
     this.currentUser = null;
-    this.sessionKey = `${STORAGE_KEYS.session}`;
+    /** @type {{userType: string|null, classroomId: string|null, accountNumber: string|null}|null} */
+    this.currentClaims = null;
+    /** @type {Promise<object|null>|null} */
+    this._authReady = null;
   }
 
   /**
-   * Initialiser auth - forsøk å gjenopprette session fra localStorage
+   * Sets up Firebase Auth state listener. Returns a promise that resolves
+   * after the first onAuthStateChanged callback fires.
    */
   async initialize() {
-    const savedUserId = localStorage.getItem(this.sessionKey);
+    if (this._authReady) return this._authReady;
 
-    if (savedUserId) {
-      try {
-        // Superadmin er ikke i Firebase - gjenopprett direkte
-        if (savedUserId === SUPERADMIN.id) {
-          this.currentUser = { ...SUPERADMIN, type: USER_TYPES.SUPERADMIN };
-          if (dataService.setCurrentUserId) dataService.setCurrentUserId(SUPERADMIN.id);
-          console.log('✅ Superadmin session gjenopprettet');
-          return this.currentUser;
-        }
-
-        // Hent fersk brukerdata fra Firebase
-        const user = await dataService.getUser(savedUserId);
-        if (user) {
-          this.currentUser = user;
-          if (dataService.setCurrentUserId) dataService.setCurrentUserId(user.id);
-          console.log('✅ Session gjenopprettet for:', user.name);
-          return user;
-        }
-      } catch (error) {
-        console.warn('⚠️ Kunne ikke gjenopprette session:', error);
-      }
-      // Session ugyldig - slett den
-      localStorage.removeItem(this.sessionKey);
+    try {
+      // eslint-disable-next-line no-undef
+      await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } catch (err) {
+      console.warn('Firebase Auth-persistens kunne ikke settes:', err);
     }
 
-    console.log('🔐 Auth initialisert - venter på innlogging');
-    return null;
+    this._authReady = new Promise((resolve) => {
+      let resolved = false;
+      // eslint-disable-next-line no-undef
+      firebase.auth().onAuthStateChanged(async (firebaseUser) => {
+        if (firebaseUser) {
+          await this._hydrateFromFirebaseUser(firebaseUser);
+          eventBus.emit(EVENTS.USER_LOGGED_IN, this.currentUser);
+        } else {
+          const previous = this.currentUser;
+          this.currentUser = null;
+          this.currentClaims = null;
+          if (dataService.setCurrentUserId) dataService.setCurrentUserId(null);
+          if (dataService.clearCurrentClassroomId) dataService.clearCurrentClassroomId();
+          if (previous) eventBus.emit(EVENTS.USER_LOGGED_OUT, previous);
+        }
+        if (!resolved) {
+          resolved = true;
+          resolve(this.currentUser);
+        }
+      });
+    });
+
+    return this._authReady;
+  }
+
+  async _hydrateFromFirebaseUser(firebaseUser) {
+    const tokenResult = await firebaseUser.getIdTokenResult();
+    this.currentClaims = {
+      userType: tokenResult.claims.userType || null,
+      classroomId: tokenResult.claims.classroomId || null,
+      accountNumber: tokenResult.claims.accountNumber || null,
+    };
+    this.currentUser = await dataService.getUser(firebaseUser.uid);
+    if (dataService.setCurrentUserId) dataService.setCurrentUserId(firebaseUser.uid);
+    if (this.currentClaims.classroomId && dataService.setCurrentClassroomId) {
+      dataService.setCurrentClassroomId(this.currentClaims.classroomId);
+    }
   }
 
   /**
-   * Logg inn bruker
-   * @param {string} username - Brukernavn
-   * @param {string} password - Passord (plain text)
-   * @returns {Promise<Object|null>} - Bruker objekt eller null hvis feil
+   * Logger inn via Cloud Function `authenticateUser` + signInWithCustomToken.
+   *
+   * @param {string} username
+   * @param {string} password — plaintext, sendes over HTTPS, verifiseres i Cloud Function
+   * @returns {Promise<object|null>} Firestore user-doc
    */
   async login(username, password) {
+    const normalized = (username || '').trim().toLowerCase();
     try {
-      const normalizedUsername = username.trim().toLowerCase();
-      console.log('🔐 Login forsøk for:', normalizedUsername);
+      // eslint-disable-next-line no-undef
+      const callable = firebase.app().functions('europe-west1').httpsCallable('authenticateUser');
+      const result = await callable({ username: normalized, password });
+      const { token } = result.data || {};
+      if (!token) throw new Error('auth.noToken');
 
-      // Sjekk om det er superadmin
-      if (normalizedUsername === SUPERADMIN.username.toLowerCase()) {
-        // Hash input-passordet og sammenlign med lagret hash
-        const hashedInput = await hashPassword(password);
-        if (hashedInput === SUPERADMIN.passwordHash) {
-          this.currentUser = {
-            ...SUPERADMIN,
-            type: USER_TYPES.SUPERADMIN
-          };
+      // eslint-disable-next-line no-undef
+      const credential = await firebase.auth().signInWithCustomToken(token);
+      await this._hydrateFromFirebaseUser(credential.user);
 
-          // Sett current user ID i dataService for Firebase
-          if (dataService.setCurrentUserId) {
-            dataService.setCurrentUserId(SUPERADMIN.id);
-          }
-
-          // Registrer innlogging for statistikk
-          statsService.recordLogin(SUPERADMIN.id, 'superadmin', null);
-
-          // Lagre session
-          localStorage.setItem(this.sessionKey, SUPERADMIN.id);
-
-          console.log('✅ Superadmin logget inn');
-          eventBus.emit(EVENTS.USER_LOGGED_IN, this.currentUser);
-          return this.currentUser;
-        } else {
-          throw new Error(languageService.t('error.invalidCredentials'));
-        }
-      }
-      
-      // Hent bruker fra database (case-insensitive)
-      const user = await dataService.getUserByUsername(normalizedUsername);
-      console.log('👤 Bruker funnet i database:', user ? user.name : 'IKKE FUNNET');
-      
-      if (!user) {
-        throw new Error(languageService.t('error.invalidCredentials'));
-      }
-      
-      // Hash passord og sammenlign
-      const hashedPassword = await hashPassword(password);
-      if (user.password !== hashedPassword) {
-        throw new Error(languageService.t('error.invalidCredentials'));
-      }
-      
-      this.currentUser = user;
-
-      // Sett current user ID i dataService for Firebase
-      if (dataService.setCurrentUserId) {
-        dataService.setCurrentUserId(user.id);
+      const classroomId = this.currentClaims?.classroomId || null;
+      try {
+        await statsService.recordLogin(this.currentUser.id, this.currentUser.type, classroomId);
+      } catch (err) {
+        console.warn('recordLogin feilet (ikke-blokkerende):', err);
       }
 
-      // Lagre session
-      localStorage.setItem(this.sessionKey, user.id);
-
-      // Registrer innlogging for statistikk
-      const classroomId = user.classroomId || null;
-      statsService.recordLogin(user.id, user.type, classroomId);
-
-      console.log('✅ Bruker logget inn og lagret:', user.name);
-
-      // Emit event
-      eventBus.emit(EVENTS.USER_LOGGED_IN, user);
-
-      return user;
-    } catch (error) {
-      console.error('Login feilet:', error);
-      throw error;
+      eventBus.emit(EVENTS.USER_LOGGED_IN, this.currentUser);
+      return this.currentUser;
+    } catch (err) {
+      const code = (err && err.code) || '';
+      const msg = (err && err.message) || '';
+      if (msg.includes('accountLocked') || (code === 'functions/permission-denied' && msg.includes('Locked'))) {
+        throw new Error(languageService.t('error.accountLocked') || 'Kontoen din er låst.', { cause: err });
+      }
+      if (code.includes('not-found') || code.includes('permission-denied') || msg.includes('invalidCredentials')) {
+        throw new Error(languageService.t('error.invalidCredentials'), { cause: err });
+      }
+      throw err;
     }
   }
 
-  /**
-   * Logg ut bruker
-   */
-  logout() {
-    const user = this.currentUser;
-    this.currentUser = null;
-
-    // Slett session
-    localStorage.removeItem(this.sessionKey);
-
-    // Tøm dataService
-    if (dataService.setCurrentUserId) {
-      dataService.setCurrentUserId(null);
-    }
-    if (dataService.clearCurrentClassroomId) {
-      dataService.clearCurrentClassroomId();
-    }
-
-    console.log('👋 Bruker logget ut:', user?.name);
-
-    eventBus.emit(EVENTS.USER_LOGGED_OUT, user);
+  async logout() {
+    // eslint-disable-next-line no-undef
+    await firebase.auth().signOut();
+    // onAuthStateChanged handles state cleanup + eventBus emit
   }
 
   /**
-   * Sjekk om bruker er logget inn
-   * @returns {boolean}
-   */
-  isAuthenticated() {
-    return this.currentUser !== null;
-  }
-
-  /**
-   * Sjekk om bruker er lærer
-   * @returns {boolean}
-   */
-  isTeacher() {
-    return this.currentUser?.type === 'teacher';
-  }
-
-  /**
-   * Sjekk om bruker er elev
-   * @returns {boolean}
-   */
-  isStudent() {
-    return this.currentUser?.type === 'student';
-  }
-
-  /**
-   * Hent nåværende bruker
-   * @returns {Object|null}
-   */
-  getCurrentUser() {
-    return this.currentUser;
-  }
-
-  /**
-   * Hent nåværende bruker ID
-   * @returns {string|null}
-   */
-  getCurrentUserId() {
-    return this.currentUser?.id || null;
-  }
-
-  /**
-   * Refresh brukerdata (f.eks. etter balance update)
-   * NB: Emitter IKKE BALANCE_UPDATED event for å unngå loop
+   * Re-fetch user-doc from Firestore (e.g. after balance update).
    */
   async refreshCurrentUser() {
     if (!this.currentUser) return null;
-    
-    try {
-      const updatedUser = await dataService.getUser(this.currentUser.id);
-      if (updatedUser) {
-        this.currentUser = updatedUser;
-        // IKKE emit BALANCE_UPDATED her - forårsaker uendelig loop!
-      }
-      return updatedUser;
-    } catch (error) {
-      console.error('Feil ved refresh av bruker:', error);
-      return null;
-    }
+    const updated = await dataService.getUser(this.currentUser.id);
+    if (updated) this.currentUser = updated;
+    return updated;
   }
 
   /**
-   * Oppdater nåværende bruker (f.eks. navn)
-   * @param {Object} updates - Oppdateringer
+   * Force Firebase Auth-token refresh — needed after admin SDK changes
+   * custom claims (e.g. teacher moved between classrooms).
    */
+  async refreshClaims() {
+    // eslint-disable-next-line no-undef
+    const fbUser = firebase.auth().currentUser;
+    if (!fbUser) return null;
+    const tokenResult = await fbUser.getIdTokenResult(true);
+    this.currentClaims = {
+      userType: tokenResult.claims.userType || null,
+      classroomId: tokenResult.claims.classroomId || null,
+      accountNumber: tokenResult.claims.accountNumber || null,
+    };
+    return this.currentClaims;
+  }
+
+  isAuthenticated() { return this.currentUser !== null; }
+  isTeacher() { return this.currentClaims?.userType === 'teacher'; }
+  isStudent() { return this.currentClaims?.userType === 'student'; }
+  isSuperAdmin() { return this.currentClaims?.userType === 'superadmin'; }
+  getCurrentUser() { return this.currentUser; }
+  getCurrentUserId() { return this.currentUser?.id || null; }
+  getCurrentClaims() { return this.currentClaims; }
+
   async updateCurrentUser(updates) {
     if (!this.currentUser) {
       throw new Error(languageService.t('error.noUserLoggedIn'));
     }
-    
-    try {
-      const updatedUser = await dataService.updateUser(
-        this.currentUser.id,
-        updates
-      );
-      this.currentUser = updatedUser;
-      return updatedUser;
-    } catch (error) {
-      console.error('Feil ved oppdatering av bruker:', error);
-      throw error;
-    }
+    const updated = await dataService.updateUser(this.currentUser.id, updates);
+    this.currentUser = updated;
+    return updated;
   }
 }
 
-// Eksporter singleton instance
 export const authService = new AuthService();
