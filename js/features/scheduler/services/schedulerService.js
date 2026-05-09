@@ -14,7 +14,7 @@ import { STORAGE_KEYS } from '../../../shared/config/config.js';
 import { savingsService } from '../../savings/index.js';
 import { loanService } from '../../loans/index.js';
 import { notificationService } from '../../notifications/index.js';
-import { eventBus } from '../../../shared/core/eventBus.js';
+import { eventBus, EVENTS } from '../../../shared/core/eventBus.js';
 import { businessService } from '../../businesses/index.js';
 import { dataService } from '../../../shared/core/dataService.js';
 import { taxService } from '../../taxes/index.js';
@@ -43,6 +43,10 @@ class SchedulerService {
      */
     async checkCloudTriggers() {
         try {
+            // eslint-disable-next-line no-undef
+            if (typeof firebase !== 'undefined' && !firebase.auth().currentUser) {
+                return; // Skipper polling når ingen er innlogget — ellers feiler reads under strenge rules
+            }
             if (!dataService.getCloudSchedulerTriggers) return;
             const triggers = await dataService.getCloudSchedulerTriggers();
             for (const trigger of triggers) {
@@ -158,6 +162,10 @@ class SchedulerService {
      * Kjør ukentlig prosessering
      */
     async processWeekly() {
+        // eslint-disable-next-line no-undef
+        if (typeof firebase !== 'undefined' && !firebase.auth().currentUser) {
+            return { processed: false, reason: 'Not signed in' };
+        }
         if (!this.shouldProcess()) {
             return { processed: false, reason: 'Not time yet' };
         }
@@ -267,16 +275,26 @@ class SchedulerService {
     }
 
     /**
-     * Start periodisk sjekk
+     * Start periodisk sjekk. Polling stoppes automatisk på logout for å
+     * unngå "permission-denied" mot strenge Firestore-rules.
      */
     start() {
-        // Sjekk umiddelbart
+        // Sjekk umiddelbart (er auth-gated internt)
         this.processWeekly();
 
         // Sjekk hver time
         this.checkInterval = setInterval(() => {
             this.processWeekly();
         }, 60 * 60 * 1000); // Hver time
+
+        // Lytt på logout for å stoppe polling
+        if (!this._eventListenersAttached) {
+            eventBus.on(EVENTS.USER_LOGGED_OUT, () => this.stop());
+            eventBus.on(EVENTS.USER_LOGGED_IN, () => {
+                if (!this.checkInterval) this.start();
+            });
+            this._eventListenersAttached = true;
+        }
 
         console.log('⏰ Scheduler startet');
     }

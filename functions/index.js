@@ -434,9 +434,13 @@ exports.migrateAuthSchema = functions
  * with userType / classroomId / accountNumber claims.
  *
  * Returns { token } only; client decodes claims via getIdTokenResult().
+ *
+ * minInstances: 1 — holder en varm instans alltid for å unngå kald-start
+ * (~1-3s) ved første login etter inaktivitet. Koster ~$2-3/mnd.
  */
 exports.authenticateUser = functions
   .region('europe-west1')
+  .runWith({ minInstances: 1 })
   .https.onCall(async (data) => {
     const username = ((data && data.username) || '').trim().toLowerCase();
     const password = (data && data.password) || '';

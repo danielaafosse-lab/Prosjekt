@@ -62,16 +62,21 @@ class StatsService {
    */
   async recordLogin(userId, userType, classroomId = null) {
     try {
+      // Krever auth — hvis bruker logger ut før denne fire-and-forget-promisen
+      // har fullført, ville Firestore-skrivingen feile med permission-denied.
+      // eslint-disable-next-line no-undef
+      if (typeof firebase !== 'undefined' && !firebase.auth().currentUser) {
+        return null;
+      }
+
       const now = new Date();
       const dateKey = this._getDateKey(now);
       const weekKey = this._getWeekKey(now);
       const monthKey = this._getMonthKey(now);
       const yearKey = this._getYearKey(now);
 
-      // Hent geografisk data
       const geoData = await this.getGeoData();
 
-      // Opprett login-record
       const loginRecord = {
         id: `login-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         userId,
@@ -85,10 +90,8 @@ class StatsService {
         geoData: geoData || null
       };
 
-      // Lagre i Firebase
       await firebaseService.set(COLLECTIONS.LOGIN_STATS, loginRecord.id, loginRecord);
 
-      // Oppdater geografisk statistikk hvis vi har data
       if (geoData) {
         await this._updateGeoStats(geoData);
       }
@@ -96,8 +99,13 @@ class StatsService {
       console.log('📊 Login registrert:', userType, dateKey);
       return loginRecord;
     } catch (error) {
-      console.error('❌ Feil ved registrering av login:', error);
-      // Ikke kast error - statistikk skal ikke blokkere innlogging
+      // Permission-denied er forventet hvis bruker logger ut umiddelbart etter login
+      // (race mot fire-and-forget). Logg som warn, ikke error, for å unngå støy.
+      if (error.code === 'permission-denied') {
+        console.warn('⚠️ recordLogin skipped (no auth):', error.message);
+      } else {
+        console.error('❌ Feil ved registrering av login:', error);
+      }
       return null;
     }
   }

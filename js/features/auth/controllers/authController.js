@@ -86,23 +86,22 @@ export const authControllerMethods = {
   },
 
   /**
-   * Håndter logout
+   * Håndter logout. Etter logout kan ikke klienten lese Firestore (strenge rules);
+   * vi rydder caches in-memory uten å re-initiere services som ville feilet med
+   * permission-denied.
    */
   handleLogout() {
-    uiManager.confirm(languageService.t('confirm.logout'), () => {
-      authService.logout();
+    uiManager.confirm(languageService.t('confirm.logout'), async () => {
+      await authService.logout();
       this.currentClassroom = null;
 
-      // Refresh alle cacher for å unngå at data fra forrige bruker vises
-      this.refreshAllServiceCaches();
+      // Vis login screen umiddelbart (Firebase Auth har allerede ryddet sesjon)
+      document.getElementById('loginScreen').classList.remove('hidden');
+      document.getElementById('studentDashboard')?.classList.add('hidden');
+      document.getElementById('teacherDashboard')?.classList.add('hidden');
+      document.getElementById('superadminDashboard')?.classList.add('hidden');
 
       console.log('✅ Logget ut');
-
-      // Vis login screen
-      document.getElementById('loginScreen').classList.remove('hidden');
-      document.getElementById('studentDashboard').classList.add('hidden');
-      document.getElementById('teacherDashboard').classList.add('hidden');
-      document.getElementById('superadminDashboard').classList.add('hidden');
     });
   },
 
