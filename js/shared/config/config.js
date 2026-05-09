@@ -98,15 +98,16 @@ export const ACCOUNT_PREFIXES = {
 };
 
 /**
- * Superadmin bruker
- * MERK: Passord er lagret som SHA-256 hash for sikkerhet
+ * Superadmin-bruker — minimal klient-info.
+ *
+ * Sannheten (passwordHash, name, type, classroomId, locked) ligger i Firestore
+ * under `users/superadmin` etter migreringen 2026-05-09. Klienten beholder kun
+ * id og username for å gjøre lookup fra brukernavn (legacy referanse i
+ * forskjellige UI-elementer som "logget inn som DanielAlexander").
  */
 export const SUPERADMIN = {
   id: 'superadmin',
   username: 'DanielAlexander',
-  passwordHash: '2ab5e704c3ca5eaa7376aeb8faf9493a7baac6fab35b0264d9ff79f8c4804cdb',
-  name: 'Superadmin',
-  type: 'superadmin'
 };
 
 /**
@@ -167,7 +168,7 @@ export const STORAGE_KEYS = {
   jobs: `${APP_CONFIG.storagePrefix}jobs`,
   applications: `${APP_CONFIG.storagePrefix}applications`,
   settings: `${APP_CONFIG.storagePrefix}settings`,
-  session: `${APP_CONFIG.storagePrefix}session`,
+  // session-key fjernet 2026-05-09: Firebase Auth håndterer egen persistens i IndexedDB.
   // Multi-tenancy (klasserom)
   CLASSROOMS: `${APP_CONFIG.storagePrefix}classrooms`,
   CENTRAL_BANK: `${APP_CONFIG.storagePrefix}centralBank`,
