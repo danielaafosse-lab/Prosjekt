@@ -1,10 +1,142 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Tillat lesing og skriving for alle collections
-    // MERK: For produksjon bør dette strammes inn med autentisering
-    match /{document=**} {
+
+    function isSignedIn() { return request.auth != null; }
+    function userType() { return request.auth.token.userType; }
+    function userClassroom() { return request.auth.token.classroomId; }
+    function isSuperAdmin() { return isSignedIn() && userType() == 'superadmin'; }
+    function isTeacher() { return isSignedIn() && userType() == 'teacher'; }
+    function isStudent() { return isSignedIn() && userType() == 'student'; }
+    function isInClassroom(cid) {
+      return isSignedIn() && (userClassroom() == cid || isSuperAdmin());
+    }
+    function isOwnUser(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    // === Brukere ===
+    match /users/{userId} {
+      allow read: if isSuperAdmin()
+                  || isOwnUser(userId)
+                  || (isSignedIn() && resource.data.classroomId == userClassroom());
+      allow create: if isSuperAdmin() || isTeacher();
+      allow update: if isSuperAdmin()
+                    || isOwnUser(userId)
+                    || (isTeacher() && resource.data.classroomId == userClassroom());
+      allow delete: if isSuperAdmin()
+                    || (isTeacher() && resource.data.classroomId == userClassroom());
+    }
+
+    // === Klasserom ===
+    match /classrooms/{classroomId} {
+      allow read: if isSuperAdmin() || isInClassroom(classroomId);
+      allow create: if isSuperAdmin() || isTeacher();
+      allow update, delete: if isSuperAdmin()
+                            || (isTeacher() && resource.data.teacherId == request.auth.uid);
+    }
+
+    // === Klasseromsdata ===
+    match /transactions/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /jobs/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /applications/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId)
+                    && request.auth.uid == request.resource.data.applicantId;
+      allow update: if isInClassroom(resource.data.classroomId)
+                    && (isTeacher() || request.auth.uid == resource.data.applicantId);
+      allow delete: if isInClassroom(resource.data.classroomId) && (isTeacher() || isSuperAdmin());
+    }
+    match /businesses/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /loans/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /savings/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /funds/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /notifications/{id} {
+      allow read: if isInClassroom(resource.data.classroomId)
+                  && (isTeacher() || isSuperAdmin() || request.auth.uid == resource.data.userId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /messages/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /inbox/{id} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isTeacher() || isSuperAdmin());
+      allow write: if isSignedIn();
+    }
+    match /outbox/{id} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isTeacher() || isSuperAdmin());
+      allow write: if isSignedIn();
+    }
+    match /weeklySnapshots/{id} {
+      allow read: if isInClassroom(resource.data.classroomId);
+      allow create: if isInClassroom(request.resource.data.classroomId);
+      allow update, delete: if isInClassroom(resource.data.classroomId);
+    }
+    match /schedulerTriggers/{id} {
+      allow read: if isSignedIn();
+      allow write: if isTeacher() || isSuperAdmin();
+    }
+
+    // === Stats ===
+    match /loginStats/{id} {
+      allow read: if isSuperAdmin() || isTeacher();
+      allow write: if isSignedIn();
+    }
+    match /geoStats/{id} {
+      allow read: if isSuperAdmin() || isTeacher();
+      allow write: if isSignedIn();
+    }
+
+    // === Lærersøknader (offentlig opprett, superadmin behandler) ===
+    match /teacherRequests/{id} {
+      allow create: if true;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // === E-post-flows (token-i-URL er sikkerhetsmekanismen) ===
+    match /emailVerifications/{id} {
       allow read, write: if true;
+    }
+    match /passwordResets/{id} {
+      allow read, write: if true;
+    }
+
+    // === Backups: skrives kun via Cloud Function (admin SDK omgår dette) ===
+    match /classroomBackups/{id} {
+      allow read: if isSuperAdmin()
+                  || (isTeacher() && resource.data.classroomId == userClassroom());
+      allow write: if false;
+    }
+
+    // === Migration audit log: kun lese for superadmin ===
+    match /migrationLog/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
     }
   }
 }

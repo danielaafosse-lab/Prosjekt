@@ -81,3 +81,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 prod-after-color-fix.png
+
+# Firestore rules rollback artifact (kept locally during cutover)
+firestore.rules.legacy
