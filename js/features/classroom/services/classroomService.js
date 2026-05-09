@@ -124,10 +124,26 @@ class ClassroomService {
         console.log(`✅ ClassroomService initialisert med ${this.classrooms.length} klasserom`);
     }
 
+    /**
+     * Demo-klasserom opprettes nå serverside av `ensureDemoData` Cloud Function
+     * (kalles fra main.js init). Klient-fallback beholdes som kompatibilitet
+     * dersom funksjonen feiler — men under strenge regler vil klient-skriving
+     * også feile, så feilmelding logges og bruker må kjøre Cloud Function manuelt.
+     */
     async createDemoClassroom() {
+        try {
+            // eslint-disable-next-line no-undef
+            const ensure = firebase.app().functions('europe-west1').httpsCallable('ensureDemoData');
+            const result = await ensure({});
+            console.info('createDemoClassroom delegerte til ensureDemoData:', result.data);
+            return;
+        } catch (err) {
+            console.warn('ensureDemoData feilet i createDemoClassroom; fortsetter med klient-fallback:', err.message);
+        }
+
+        // Klient-fallback (kjører bare hvis Cloud Function feiler — ofte umulig under strenge regler)
         const users = this.getUsers();
-        
-        // Finn eller opprett demo lærer
+
         let demoTeacher = users.find(u => u.id === 't1');
         if (!demoTeacher) {
             const hashedPassword = await hashPassword('passord');
@@ -146,7 +162,6 @@ class ClassroomService {
             demoTeacher.classroomId = 'demo-classroom';
         }
 
-        // Opprett klasserom
         const classroom = {
             id: 'demo-classroom',
             teacherId: 't1',
@@ -161,7 +176,6 @@ class ClassroomService {
         };
         this.classrooms.push(classroom);
 
-        // Opprett sentralbank for klasserommet
         this.centralBanks[classroom.id] = {
             accountNumber: '000',
             transactions: [],

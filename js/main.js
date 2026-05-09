@@ -72,8 +72,8 @@ class EconSimApp {
     try {
       console.log('🚀 EconSim v4.0 starter...');
 
-      // Eksporter reset-funksjon globalt for debugging
-      window.resetEconSim = () => this.resetAllData();
+      // (Global resetEconSim() er fjernet 2026-05-09 — bruk firebase CLI for utvikling.
+      // Se docs/OPERATIONS.md §11.)
 
       // Initialiser språktjeneste først (før UI)
       languageService.initialize();
@@ -87,6 +87,19 @@ class EconSimApp {
 
       // Initialiser dataservice
       await dataService.initialize();
+
+      // Sørg for at demo-data finnes (idempotent Cloud Function — første kjøring etter
+      // firebase firestore:delete eller helt ny installasjon).
+      try {
+        // eslint-disable-next-line no-undef
+        const ensure = firebase.app().functions('europe-west1').httpsCallable('ensureDemoData');
+        const ensureResult = await ensure({});
+        if (ensureResult.data?.created) {
+          console.info('🌱 Demo-klasserom opprettet fra ensureDemoData Cloud Function');
+        }
+      } catch (err) {
+        console.warn('ensureDemoData feilet (ignorerer; demo finnes sannsynligvis):', err.message);
+      }
 
       // Initialiser klasserom-service (multi-tenancy)
       await classroomService.initialize();
@@ -129,7 +142,6 @@ class EconSimApp {
       } else {
         // Vis login screen
         console.log('📝 Viser login-skjerm');
-        console.log('💡 Tips: Bruk resetEconSim() i konsollen for å resette all data');
       }
 
       // Setup event listeners
@@ -189,54 +201,6 @@ class EconSimApp {
     });
 
     console.log('✅ Alle tjenester initialisert');
-  }
-
-  /**
-   * Reset all data - for debugging
-   */
-  async resetAllData() {
-    if (confirm(languageService.t('confirm.resetData'))) {
-      console.log('🗑️ Sletter all data fra Firebase og localStorage...');
-
-      // Slett Firebase-data via dataService
-      try {
-        // Slett alle jobbtilbud
-        const jobOffers = await dataService.getJobOffers();
-        for (const offer of jobOffers) {
-          await dataService.deleteJobOffer(offer.id);
-        }
-
-        // Slett alle bedriftsjobb-søknader
-        const jobApps = await dataService.getBusinessJobApplications();
-        for (const app of jobApps) {
-          await dataService.deleteBusinessJobApplication(app.id);
-        }
-
-        // Slett alle lånesøknader
-        const loanApps = await dataService.getLoanApplications();
-        for (const app of loanApps) {
-          await dataService.deleteLoanApplication(app.id);
-        }
-
-        console.log('✅ Firebase-data slettet');
-      } catch (error) {
-        console.error('❌ Feil ved sletting av Firebase-data:', error);
-      }
-
-      // Slett alle econsim_ keys fra localStorage (legacy data)
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('econsim_')) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(key => localStorage.removeItem(key));
-      console.log('🗑️ Slettet', keysToRemove.length, 'nøkler fra localStorage');
-
-      // Reload siden
-      location.reload();
-    }
   }
 
   /**
@@ -1532,117 +1496,34 @@ class EconSimApp {
   /**
    * Reset demo-klasserommet til initial data (kun demo-konto t1)
    */
+  /**
+   * Tilbakestill demo-klasserommet via Cloud Function `resetDemoClassroom`.
+   * Cloud Function tar backup, sletter klasseromsdata + elever, og gjenoppretter
+   * demo-elever (kari123 + andre fra initial-data.json) atomisk.
+   */
   async resetDemoClassroom() {
     try {
       const currentUser = authService.getCurrentUser();
-      if (!currentUser || currentUser.id !== 't1') {
+      if (!currentUser || (currentUser.id !== 't1' && !authService.isSuperAdmin())) {
         uiManager.showError(languageService.t('error.unauthorized'));
         return;
       }
 
-      // Bekreftelse
-      const confirmMsg = languageService.t('confirm.resetDemoClassroom') || 
-        '🔄 Dette vil tilbakestille demo-klasserommet til standard demo-data.\n\nAlle endringer du har gjort vil bli slettet.\n\nEr du sikker?';
-      
-      if (!confirm(confirmMsg)) {
-        return;
-      }
+      const confirmMsg = languageService.t('confirm.resetDemoClassroom') ||
+        '🔄 Tilbakestill demo-klasserommet?';
+      if (!confirm(confirmMsg)) return;
 
-      console.log('� Resetter demo-klasserom...');
-      const demoClassroomId = 'demo-classroom';
+      // eslint-disable-next-line no-undef
+      const callable = firebase.app().functions('europe-west1').httpsCallable('resetDemoClassroom');
+      const result = await callable({});
+      console.info(`✅ Demo reset, backup ${result.data.backupId}, ${result.data.studentsRecreated} elever`);
 
-      // Last initial data først for å vite hvilke demo-elever som skal gjenopprettes
-      const response = await fetch('data/initial-data.json');
-      if (!response.ok) {
-        throw new Error('Kunne ikke laste initial-data.json');
-      }
-      const initialData = await response.json();
-
-      const initialDemoStudents = (initialData.users || []).filter(
-        u => u.type === 'student' && u.classroomId === demoClassroomId
-      );
-
-      // Sørg for at kari123 ALLTID finnes, selv om initial-data endres
-      const kariIndex = initialDemoStudents.findIndex(s => s.username === 'kari123');
-      if (kariIndex >= 0) {
-        // Tving kjent demo-innlogging for Kari
-        initialDemoStudents[kariIndex] = {
-          ...initialDemoStudents[kariIndex],
-          id: initialDemoStudents[kariIndex].id || 's1',
-          username: 'kari123',
-          password: 'passord123',
-          name: initialDemoStudents[kariIndex].name || 'Kari Nordmann',
-          accountNumber: initialDemoStudents[kariIndex].accountNumber || '101',
-          type: 'student',
-          classroomId: demoClassroomId
-        };
-      } else {
-        initialDemoStudents.push({
-          id: 's1',
-          username: 'kari123',
-          password: 'passord123',
-          name: 'Kari Nordmann',
-          accountNumber: '101',
-          type: 'student',
-          balance: 1000,
-          classroomId: demoClassroomId
-        });
-      }
-
-      // 1. Slett all demo-klassedata (transaksjoner, jobber, bedrifter, lån, søknader, meldinger, osv.)
-      // Kjøres før elevsletting for å fange opp legacy transaksjoner knyttet til elev-IDer
-      await dataService.deleteAllClassroomData(demoClassroomId);
-
-      // 2. Slett alle elever i demo-klasserommet
-      const users = dataService.getUsersSync();
-      const studentsToDelete = users.filter(u => u.classroomId === demoClassroomId && u.type === 'student');
-      for (const student of studentsToDelete) {
-        await dataService.deleteUser(student.id);
-      }
-      console.log(`✅ Slettet ${studentsToDelete.length} elever`);
-
-      // 3. Opprett demo-elever på nytt fra initial data
-      for (const student of initialDemoStudents) {
-        // Rydd opp eventuelle gamle brukere med samme brukernavn
-        const existingByUsername = await dataService.getUserByUsername(student.username);
-        if (existingByUsername) {
-          await dataService.deleteUser(existingByUsername.id);
-        }
-        await dataService.createUser(student);
-      }
-      console.log(`✅ Gjenopprettet ${initialDemoStudents.length} demo-elever (kari123 = passord123)`);
-
-      // 4. Gjenopprett demo-innstillinger
-      if (initialData.settings) {
-        const classroom = await dataService.getClassroom(demoClassroomId);
-        if (classroom) {
-          const mergedSettings = { ...APP_CONFIG.defaults, ...initialData.settings };
-          await dataService.updateClassroom(demoClassroomId, {
-            className: mergedSettings.className,
-            currencyName: mergedSettings.currencyName,
-            currencySymbol: mergedSettings.currencySymbol,
-            startingBalance: mergedSettings.startingBalance,
-            settings: mergedSettings
-          });
-        }
-      }
-
-      // 5. Nullstill login-statistikk for demo-klasserom
-      await statsService.resetClassroomStats(demoClassroomId);
-
-      // 6. Oppdater caches
       await dataService.refreshUsersCache();
-      await dataService.loadClassroomDataToCache(demoClassroomId);
-
-      // 7. Sikre korrekt kobling mellom demo-lærer, klasserom og demo-elever
-      await this.ensureDemoClassroomIntegrity();
+      await dataService.loadClassroomDataToCache('demo-classroom');
 
       uiManager.showSuccess(languageService.t('msg.demoClassroomReset') || 'Demo-klasserom tilbakestilt!');
-      
-      // Vent litt, så reload
-      setTimeout(() => {
-        location.reload();
-      }, 1000);
+
+      setTimeout(() => location.reload(), 1000);
     } catch (error) {
       console.error('Feil ved reset av demo-klasserom:', error);
       uiManager.showError(languageService.t('error.resetFailed'));
@@ -1821,11 +1702,14 @@ class EconSimApp {
   }
 
   /**
-   * Slett all klassedata (elever, bedrifter, lån, innstillinger)
+   * Slett all klassedata via Cloud Function `resetClassroom`.
+   *
+   * Cloud Function tar automatisk en backup til `classroomBackups`-collection
+   * før sletting (90 dagers retensjon). Klient-koden er kun et tynt UI-lag.
    */
   async deleteClassData() {
     try {
-      console.log('🗑️ Sletter all klassedata...');
+      console.log('🗑️ Sletter all klassedata via Cloud Function...');
       const classroomId = dataService.getCurrentClassroomId();
 
       if (!classroomId) {
@@ -1833,55 +1717,33 @@ class EconSimApp {
         return;
       }
 
-      // 1. Slett all klasseromsdata først (inkl. transaksjoner/statistikkgrunnlag)
-      // Kjøres før elevsletting for å fange legacy transaksjoner uten classroomId
-      await dataService.deleteAllClassroomData(classroomId);
+      // eslint-disable-next-line no-undef
+      const callable = firebase.app().functions('europe-west1').httpsCallable('resetClassroom');
+      const result = await callable({ classroomId });
+      console.info(`✅ Backup ${result.data.backupId}, slettet ${result.data.deletedStudents} elever`);
 
-      // 2. Slett alle elever i klasserommet
-      const users = dataService.getUsersSync();
-      const studentsToDelete = users.filter(u => u.classroomId === classroomId && u.type === 'student');
-      for (const student of studentsToDelete) {
-        await dataService.deleteUser(student.id);
-      }
-      console.log(`✅ Slettet ${studentsToDelete.length} elever`);
-
-      // 3. Nullstill login-statistikk for klasserommet
-      await statsService.resetClassroomStats(classroomId);
-      console.log('✅ Nullstilt login-statistikk');
-
-      // 4. Reset innstillinger til standard
+      // Reset innstillinger til standard på klient (Cloud Function reset bare nummerering)
       const defaultSettings = { ...APP_CONFIG.defaults };
-      await settingsService.updateSettings(defaultSettings);
-      console.log('✅ Innstillinger tilbakestilt');
+      try {
+        await settingsService.updateSettings(defaultSettings);
+      } catch (err) {
+        console.warn('Innstillinger kunne ikke tilbakestilles:', err);
+      }
 
-      // 5. Reset klasserom-nummerering og klasserom-felt i Firebase
-      await dataService.updateClassroom(classroomId, {
-        className: defaultSettings.className,
-        currencyName: defaultSettings.currencyName,
-        currencySymbol: defaultSettings.currencySymbol,
-        startingBalance: defaultSettings.startingBalance,
-        settings: defaultSettings,
-        nextStudentNumber: 101,
-        nextBusinessNumber: 501
-      });
-      console.log('✅ Klasserom-nummerering tilbakestilt');
-
-      // 6. Refresh alle cacher
+      // Refresh alle cacher
       await dataService.refreshUsersCache();
       await dataService.loadClassroomDataToCache(classroomId);
       await this.refreshAllServiceCaches();
 
-      // Lukk settings-modal
-      document.getElementById('settingsModal').classList.add('hidden');
+      const settingsModal = document.getElementById('settingsModal');
+      if (settingsModal) settingsModal.classList.add('hidden');
 
       uiManager.showSuccess(languageService.t('msg.classDeleted'));
-
-      // Refresh dashboard
       await this.showTeacherDashboard();
 
     } catch (error) {
       console.error('Feil ved sletting av klasse:', error);
-      uiManager.showError(languageService.t('error.deleteFailed') + ': ' + error.message);
+      uiManager.showError(languageService.t('error.deleteFailed') + ': ' + (error.message || ''));
     }
   }
 
