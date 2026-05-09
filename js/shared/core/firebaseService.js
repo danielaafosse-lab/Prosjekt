@@ -1,10 +1,12 @@
 /**
  * Firebase Service
  * Håndterer all kommunikasjon med Firebase Firestore
- * 
+ *
  * VIKTIG: Erstatter localStorage med cloud database
  * MERK: Ikke importer languageService her - det skaper sirkulære avhengigheter
  */
+
+import { configureEmulators } from './emulatorConfig.js';
 
 // Firebase konfigurasjon - Oppdatert med EconSim prosjekt
 const firebaseConfig = {
@@ -57,6 +59,9 @@ class FirebaseService {
       } else {
         app = firebase.apps[0];
       }
+
+      // Wire emulators når ?emulator=1 eller localhost (må kjøres før første firestore()-kall)
+      configureEmulators();
 
       // Hent Firestore referanse
       this.db = firebase.firestore();
