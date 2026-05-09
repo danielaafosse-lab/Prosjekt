@@ -109,15 +109,10 @@ class ClassroomService {
         const superadminExists = users.some(u => u.type === 'superadmin');
         
         if (!superadminExists) {
-            console.log('🔑 Oppretter superadmin...');
-            const hashedPassword = await hashPassword(SUPERADMIN.password);
-            const superadminUser = {
-                ...SUPERADMIN,
-                password: hashedPassword,
-                createdAt: new Date().toISOString()
-            };
-            users.push(superadminUser);
-            await this.saveUsers(users);
+            // Superadmin opprettes nå serverside av migrateAuthSchema Cloud Function
+            // (i Firestore: users/superadmin med korrekt passwordHash). Klient-fallback
+            // beholdes ikke — forsøker man dette uten migrering vil det feile på rules.
+            console.log('🔑 Superadmin mangler — kjør migrateAuthSchema Cloud Function');
         }
 
         // Opprett demo klasserom hvis ingen finnes
@@ -139,10 +134,11 @@ class ClassroomService {
             demoTeacher = {
                 id: 't1',
                 username: 'laerer',
-                password: hashedPassword,
+                passwordHash: hashedPassword,
                 name: 'Demo Lærer',
                 type: 'teacher',
                 classroomId: 'demo-classroom',
+                locked: false,
                 createdAt: new Date().toISOString()
             };
             users.push(demoTeacher);
@@ -218,12 +214,13 @@ class ClassroomService {
             const student = {
                 id: `s${classroom.nextStudentNumber - 100}`,
                 username: studentData.username,
-                password: hashedPassword,
+                passwordHash: hashedPassword,
                 name: studentData.name,
                 type: 'student',
                 classroomId: classroom.id,
                 accountNumber: accountNumber,
                 balance: classroom.startingBalance,
+                locked: false,
                 createdAt: new Date().toISOString()
             };
             
@@ -452,7 +449,7 @@ class ClassroomService {
         const student = {
             id: `student-${Date.now()}`,
             username,
-            password: hashedPassword,
+            passwordHash: hashedPassword,
             name,
             type: 'student',
             classroomId,
@@ -464,6 +461,7 @@ class ClassroomService {
             fundBalance: 0, // Saldo på fondskonto
             fundShares: 0, // Antall fondsandeler
             fundCostBasis: 0, // Kostpris for fondsandeler (for gevinstberegning)
+            locked: false,
             createdAt: new Date().toISOString()
         };
 
