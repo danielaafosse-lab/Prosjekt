@@ -73,13 +73,14 @@
     <!-- Firebase SDK (v9 compat for enklere migrering) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
 
     <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Tailwind CSS (bygget lokalt) -->
+    <!-- Tailwind CSS (bygget lokalt fra src/input.css) -->
     <link rel="stylesheet" href="css/output.css">
-    <link rel="stylesheet" href="css/styles.css">
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #bfdbfe; }
         /* Loading spinner for buttons */
@@ -181,7 +182,7 @@
         .info-btn:hover::after { display: block; }
     </style>
 </head>
-<body class="bg-indigo-100 text-gray-800 flex flex-col min-h-screen">
+<body class="bg-blue-200 text-gray-800 flex flex-col min-h-screen">
     <!-- Language Selector - Alltid synlig øverst -->
     <div id="languageSelector" class="fixed top-0 right-0 z-50 p-2 flex gap-2">
         <button 
@@ -1267,6 +1268,23 @@
                 <h3 class="font-semibold text-lg mb-4">📚 <span data-i18n="superadmin.allClassrooms">Alle klasserom</span></h3>
                 <div id="allClassroomsList" class="space-y-3">
                     <p class="text-gray-500" data-i18n="common.loadingClassrooms">Laster klasserom...</p>
+                </div>
+            </div>
+
+            <!-- Backups (superadmin) -->
+            <div class="bg-white rounded-lg shadow p-6 mb-6" id="superadminBackupsSection">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-semibold text-lg">📦 <span data-i18n="backups.title">Backups</span></h3>
+                    <button onclick="window.econSim.backupsController.render()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">
+                        🔄 <span data-i18n="btn.refresh">Oppdater</span>
+                    </button>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    <span data-i18n="backups.intro">Automatiske backups tas hver gang en klasserom-reset utføres. Beholdes i 90 dager.</span>
+                </p>
+                <div id="backupsList">
+                    <p class="text-gray-500 italic" data-i18n="backups.empty">Ingen backups.</p>
                 </div>
             </div>
 

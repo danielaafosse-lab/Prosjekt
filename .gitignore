@@ -67,3 +67,20 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Claude Code workspace
+.claude/
+.playwright-mcp/
+
+# IDE
+.vscode/
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+prod-after-color-fix.png
+
+# Firestore rules rollback artifact (kept locally during cutover)
+firestore.rules.legacy

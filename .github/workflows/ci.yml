@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build CSS
+        run: npm run build:css
+
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Typecheck (JSDoc via tsc)
+        run: npm run typecheck
+        continue-on-error: true
+
+      - name: Tests
+        run: npm test
+
+  build-css-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Verify css/output.css er oppdatert
+        run: |
+          npm run build:css
+          if ! git diff --quiet css/output.css; then
+            echo "::error::css/output.css er ikke synkronisert med src/input.css. Kjør 'npm run build:css' lokalt og commit."
+            git diff css/output.css
+            exit 1
+          fi
