@@ -265,9 +265,11 @@ class FirebaseDataService {
       // Opprett brukere med hashede passord
       for (const user of jsonData.users || []) {
         const hashedPassword = await hashPassword(user.password);
+        // eslint-disable-next-line no-unused-vars
+        const { password: _plainPassword, ...rest } = user;
         await firebaseService.create(COLLECTIONS.USERS, {
-          ...user,
-          password: hashedPassword
+          ...rest,
+          passwordHash: hashedPassword
         }, user.id);
       }
       console.log('✅ Brukere opprettet:', jsonData.users?.length || 0);
@@ -448,9 +450,12 @@ class FirebaseDataService {
       }
     }
     
+    // eslint-disable-next-line no-unused-vars
+    const { password: _plainPassword, ...userRest } = userData;
     const newUser = {
-      ...userData,
-      password: await hashPassword(userData.password),
+      ...userRest,
+      passwordHash: await hashPassword(userData.password),
+      locked: userData.locked === true,
       createdAt: new Date().toISOString()
     };
     
