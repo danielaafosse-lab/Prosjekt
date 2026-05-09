@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^4.0.1",
     "eslint": "^10.3.0",
     "eslint-plugin-import-x": "^4.16.2",
     "firebase-tools": "^14.22.0",
