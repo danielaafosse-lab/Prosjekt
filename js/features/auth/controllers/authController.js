@@ -266,7 +266,7 @@ export const authControllerMethods = {
 
       // Oppdater brukerens passord i Firebase
       await dataService.updateUser(result.userId, {
-        password: await hashPassword(result.newPassword)
+        passwordHash: await hashPassword(result.newPassword)
       });
 
       // Send nytt passord via e-post

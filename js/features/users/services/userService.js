@@ -240,7 +240,8 @@ class UserService {
       if (updates.password) {
         const validation = validatePassword(updates.password);
         if (!validation.valid) throw new Error(validation.error);
-        updates.password = await hashPassword(updates.password);
+        updates.passwordHash = await hashPassword(updates.password);
+        delete updates.password;
       }
       
       // Ikke tillat endring av type

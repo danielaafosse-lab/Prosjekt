@@ -1661,7 +1661,7 @@ class EconSimApp {
         const updates = {
           type: 'student',
           classroomId: 'demo-classroom',
-          password: hashedKariPassword,
+          passwordHash: hashedKariPassword,
           name: existingKari.name || 'Kari Nordmann',
           accountNumber: existingKari.accountNumber || '101'
         };
@@ -2218,14 +2218,14 @@ class EconSimApp {
         
         // Verifiser nåværende passord
         const { hashPassword, verifyPassword } = await import('./shared/utils/helpers.js');
-        const isPasswordCorrect = await verifyPassword(currentPassword, user.password);
+        const isPasswordCorrect = await verifyPassword(currentPassword, user.passwordHash);
         if (!isPasswordCorrect) {
           uiManager.showError(languageService.t('error.currentPasswordWrong'));
           return;
         }
-        
+
         // Hash nytt passord og fjern initialPassword (ikke lenger gyldig)
-        updates.password = await hashPassword(newPassword);
+        updates.passwordHash = await hashPassword(newPassword);
         updates.initialPassword = null;
       }
 
@@ -2395,7 +2395,7 @@ class EconSimApp {
       }
       if (newPassword) {
         // Hash passordet før lagring
-        userUpdates.password = await hashPassword(newPassword);
+        userUpdates.passwordHash = await hashPassword(newPassword);
       }
       if (Object.keys(userUpdates).length > 0) {
         await dataService.updateUser(currentUser.id, userUpdates);
