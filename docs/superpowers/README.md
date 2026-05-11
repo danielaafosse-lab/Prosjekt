@@ -13,8 +13,8 @@ Filnavnformat: `YYYY-MM-DD-kort-beskrivelse.md`.
 
 | Fil | Status | Kommentar |
 |---|---|---|
-| [specs/2026-05-06-econsim-v6-restructure-design.md](specs/2026-05-06-econsim-v6-restructure-design.md) | Pågår | v6 fase 4 (template-uttrekk fra `index.html`) og fase 5b (controller-uttrekk fra `main.js`) er fortsatt utestående. |
-| [specs/2026-05-08-fase5b-controller-extraction-guide.md](specs/2026-05-08-fase5b-controller-extraction-guide.md) | Pågår | Detaljert guide for hvordan controllers og UI-helpers skal trekkes ut av `main.js` feature-for-feature. 8 av 13 features er ferdig. Gjenstår: `i18n`, `classroom`, `savings`, `taxes`, `scheduler`. |
+| [specs/2026-05-06-econsim-v6-restructure-design.md](specs/2026-05-06-econsim-v6-restructure-design.md) | Pågår | v6 fase 4 (template-uttrekk fra `index.html`, fortsatt ~3 283 linjer) og fase 5b (controller-uttrekk fra `main.js`) er fortsatt utestående. Se status-tabell og "Hva er utsatt og hvorfor"-seksjon i [CLAUDE.md](../../CLAUDE.md) for siste fase-status. |
+| [specs/2026-05-08-fase5b-controller-extraction-guide.md](specs/2026-05-08-fase5b-controller-extraction-guide.md) | Pågår | Generisk how-to-guide for å trekke ut controllers fra `main.js`. **Faktisk status** (verifisert 2026-05-10): alle 13 features har `controllers/`-mapper. `main.js` er nede i ~2 355 linjer (fra opprinnelige 12 200). Det som gjenstår i `main.js`: bootstrap (beholdes), 3 dashboard-renderere (`showStudentDashboard`/`showTeacherDashboard`/`showSuperadminDashboard`), settings-modalen (krysser settings+tax+classroom+users), demo-helpers, og noen legacy job/transfer-flows. Neste mål: trekk ut settings-modal og dashboard-renderere. |
 
 ## Fullførte specs (beholdt som arkitektur-referanse)
 

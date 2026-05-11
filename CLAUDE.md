@@ -23,7 +23,7 @@ Vi har migrert fra organisk vokst monolitt til feature-basert arkitektur. Arbeid
 | 3 — Data-lag forenkling (passthrough fjernet, firebaseService til shared/) | Ferdig |
 | 4 — Splitt `index.html` til templates | **Utsatt** (se under) |
 | 5a — Service-laget migrert til `js/features/X/` | Ferdig |
-| 5b — Splitt `main.js` til feature-controllers | **Utsatt** (se under) |
+| 5b — Splitt `main.js` til feature-controllers | **Pågår** (se under) |
 | 6 — Ytelse (Firestore offline persistence + composite indexes) | Ferdig |
 | 7 — JSDoc-typer og Vitest-tester | Ferdig (24 tester grønne) |
 | 8 — Cutover (denne oppdateringen) | Ferdig |
@@ -33,9 +33,19 @@ Vi har migrert fra organisk vokst monolitt til feature-basert arkitektur. Arbeid
 
 **Fase 4 (template-ekstrakering fra index.html):** index.html er fortsatt ~3 200 linjer og inneholder alle skjermer skjult med `hidden`-klasse. Et komplett uttrekk krever en `templateLoader` med livssyklus (activate/deactivate per controller) og er tett koblet til fase 5b. Skal gjøres feature-for-feature i fremtidig økt.
 
-**Fase 5b (controller-ekstrakering fra main.js):** main.js er fortsatt ~12 200 linjer og fungerer som en god-fil for alle dashboards og event-handlere. Forretningslogikken (services) er nå ren og isolert i features/, men UI-koden i main.js er fortsatt monolittisk. Anbefalt å trekke ut feature-for-feature: `i18n` → `notifications` → `stats` → `auth` → `users` → `classroom` → `transactions` → `savings` → `loans` → `jobs` → `businesses` → `taxes` → `scheduler`. Hver feature får egen controller-fil under `js/features/X/controllers/`.
+**Fase 5b (controller-ekstrakering fra main.js):** Betydelig progress siden start — `main.js` er redusert fra ~12 200 linjer til **~2 355 linjer**. Alle 13 features har egne controller-filer i `js/features/X/controllers/`. Det som fortsatt ligger i `main.js`:
 
-Begrunnelse: fase 4+5b er stort arbeid som krever testing av hver UI-flow per feature. Med Playwright tilgjengelig som sikkerhetsnett kan dette gjøres i fremtidige økter, én feature om gangen.
+- Bootstrap og init-flow (`init`, `initializeUserServices`, `setupEventListeners`) — beholdes der
+- Tre top-level dashboard-renderere: `showStudentDashboard`, `showTeacherDashboard`, `showSuperadminDashboard`
+- Settings-modalen (`showSettingsModal`, `saveSettings`, `saveStudentSettings`) — kompleks, krysser flere features
+- Tab-bytting: `showStudentScreen`, `showTeacherScreen`
+- Demo-helpers (`ensureDemoKariAccess`, `ensureDemoClassroomIntegrity`)
+- Noen legacy job/transfer-flows (`showCreateJobModal`, `handleCreateJob`, `handleGiveMoney`)
+- `refreshAllServiceCaches` (cross-cutting)
+
+Anbefalt videre arbeid: trekk ut **settings-modalen** (~300 linjer, krysser settings + tax + classroom + users) og **dashboard-renderere** (~400 linjer hver) som egne moduler. Demo-helpers kan flyttes til `features/classroom/`. Når dette er ferdig vil `main.js` være ~500 linjer ren bootstrap.
+
+Begrunnelse: fase 4 (templates) er fortsatt stort arbeid som krever testing av hver UI-flow. Med Playwright tilgjengelig som sikkerhetsnett kan dette gjøres i fremtidige økter.
 
 ---
 
@@ -45,7 +55,7 @@ Begrunnelse: fase 4+5b er stort arbeid som krever testing av hver UI-flow per fe
 
 ```
 js/
-├── main.js                 # 12k+ linjer (controllers ekstrakeres senere)
+├── main.js                 # ~2 355 linjer (bootstrap + dashboard-renderere; settings-modal og dashboards kan flyttes videre)
 │
 ├── features/               # Domeneorientert: én mappe = ett konsept
 │   ├── auth/

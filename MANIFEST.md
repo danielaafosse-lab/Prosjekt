@@ -105,7 +105,7 @@ Se [CHANGELOG.md](CHANGELOG.md) for full versjonshistorikk og [docs/superpowers/
 
 ```
 js/
-├── main.js                 # 12k+ linjer — controllers ekstrakeres feature-for-feature
+├── main.js                 # ~2 355 linjer (redusert fra ~12 200; resterende: bootstrap + 3 dashboard-renderere + settings-modal)
 ├── features/               # Domeneorientert: én mappe = ett konsept
 └── shared/                 # Plattform: data, UI, utils, typer
 ```
